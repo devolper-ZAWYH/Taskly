@@ -1,0 +1,13 @@
+node_modules/
+.next/
+out/
+.yarn/
+!.yarn/releases
+*.tsbuildinfo
+next-env.d.ts
+.env*
+
+# Cloudflare / OpenNext
+.open-next/
+.wrangler/
+.dev.vars

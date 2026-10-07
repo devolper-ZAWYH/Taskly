@@ -1,0 +1,38 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // OpenNext's app plus a scheduled handler (due date reminders).
+  "main": "custom-worker.ts",
+  "name": "zawyh",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "zawyh"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "zawyh-db",
+      "database_id": "d998695b-3bdb-47c7-8ba5-4cbf01bcd410",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    // Web push (VAPID). The matching private key is the VAPID_PRIVATE_KEY secret.
+    "VAPID_PUBLIC_KEY": "BKbT1ysPn04TCWsJHyp22OeMJk_ZWHG52FEYafDGdcsovkHOIQgclSeDYMne64LZJ_S4neBAG2Y-OfGLHKnGviQ",
+    "VAPID_SUBJECT": "https://zawyh.thouseefhamza-codes.workers.dev"
+  },
+  // Hourly: each person gets reminders at 08:00 in their own time zone.
+  "triggers": {
+    "crons": ["0 * * * *"]
+  },
+  "observability": {
+    "enabled": true
+  }
+}

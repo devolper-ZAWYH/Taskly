@@ -1,0 +1,221 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Design tokens — the Pretace design system in Taskly's colours: Plus Jakarta
+ * Sans + JetBrains Mono (Cairo for Arabic), 6/10/14px radii, line borders
+ * with soft shadows only on floating layers. Pretace's orange roles
+ * (brand, focus, selection) take the logo's gold, with emerald for success.
+ * Mapped onto the shadcn/coss token names the copied ui primitives use.
+ */
+@theme inline {
+  --animate-skeleton: skeleton 2s -1s infinite linear;
+  --font-sans: var(--font-jakarta), "Segoe UI", system-ui, sans-serif;
+  --font-arabic: var(--font-cairo), ui-sans-serif, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, Menlo, monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-foreground-strong: var(--foreground-strong);
+  --color-foreground-secondary: var(--foreground-secondary);
+  --color-foreground-muted: var(--foreground-muted);
+  --color-foreground-disabled: var(--foreground-disabled);
+  --color-ink-muted: var(--foreground-muted);
+  --color-card: var(--card);
+  --color-card-foreground: var(--foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--foreground);
+  --color-primary: var(--brand);
+  --color-primary-foreground: var(--brand-foreground);
+  --color-secondary: var(--surface);
+  --color-secondary-foreground: var(--foreground);
+  --color-muted: var(--surface-muted);
+  --color-muted-foreground: var(--foreground-secondary);
+  --color-accent: var(--surface-hover);
+  --color-accent-foreground: var(--foreground);
+  --color-border: var(--border);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-brand: var(--ring-brand);
+  --color-ghost-hover: var(--surface-hover);
+
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-active: var(--brand-active);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand-surface: var(--brand-surface);
+  --color-brand-surface-subtle: var(--brand-surface-subtle);
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-border: var(--brand-border);
+
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-elevated: var(--surface);
+  --color-surface-strong: var(--surface-strong);
+
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-bg: var(--success-bg);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-bg: var(--warning-bg);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-bg: var(--destructive-bg);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-bg: var(--info-bg);
+
+  /* Pretace radii: xs tags, sm inputs, md buttons/cards, lg overlays. */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 14px;
+  --radius-2xl: 14px;
+  --radius-3xl: 20px;
+
+  /* Pretace elevation, neutral-tinted. */
+  --shadow-xs: 0 1px 2px rgba(28, 26, 23, 0.06);
+  --shadow-sm: 0 1px 3px rgba(28, 26, 23, 0.08), 0 1px 2px rgba(28, 26, 23, 0.04);
+  --shadow-md: 0 4px 12px rgba(28, 26, 23, 0.08), 0 2px 4px rgba(28, 26, 23, 0.04);
+  --shadow-lg: 0 12px 32px rgba(28, 26, 23, 0.12), 0 4px 8px rgba(28, 26, 23, 0.04);
+
+  @keyframes skeleton {
+    to {
+      background-position: -200% 0;
+    }
+  }
+}
+
+:root {
+  /*
+   * Taskly palette: gold is the brand colour, emerald means success, white is
+   * the ground, with warm neutral greys. (Navy appears only in the logo.)
+   * White text on gold is unreadable, so gold surfaces carry dark text, and
+   * gold used as text or a focus ring is a darker shade for contrast.
+   */
+  --taskly-gold: #da9100;
+  --taskly-gold-dark: #a86e00;
+  --taskly-emerald: #0b5345;
+
+  /* Brand — primary actions, active states, focus. */
+  --brand: var(--taskly-gold);
+  --brand-hover: #c98600;
+  --brand-active: #b87a00;
+  --brand-foreground: #1c1a17;
+  --brand-surface: #fdf3dc;
+  --brand-surface-subtle: #fef9ee;
+  --brand-ink: #7a5200;
+  --brand-border: #f0d59a;
+
+  /* Surfaces: surface / surface-raised / surface-sunken / surface-hover. */
+  --background: #ffffff;
+  --surface: #ffffff;
+  --surface-muted: #faf9f7;
+  --surface-hover: #f5f3ef;
+  --surface-strong: #eeebe5;
+  --card: #ffffff;
+  --popover: #ffffff;
+
+  /* Text: warm near-black ink. */
+  --foreground: #1c1a17;
+  --foreground-strong: #0d0c0a;
+  --foreground-secondary: #4a4640;
+  --foreground-muted: #6b665d;
+  --foreground-disabled: #a29d94;
+
+  /* Lines: line for dividers, line-strong for input borders. */
+  --border: #e9e6e0;
+  --border-subtle: #f2f0ec;
+  --border-strong: #d9d5cd;
+  --input: #8f897f;
+  --ring: var(--taskly-gold-dark);
+  --ring-brand: rgba(218, 145, 0, 0.28);
+  --selection: #f9e3b0;
+
+  /* Status — emerald for success, darker gold for caution, neutral for info. */
+  --success: var(--taskly-emerald);
+  --success-foreground: var(--taskly-emerald);
+  --success-bg: #e2f0eb;
+  --warning: #9a6700;
+  --warning-foreground: #7a5200;
+  --warning-bg: #fdf1d6;
+  --destructive: #c8322b;
+  --destructive-foreground: #c8322b;
+  --destructive-bg: #fdecea;
+  --info: #4a4640;
+  --info-foreground: #4a4640;
+  --info-bg: #f2f0ec;
+
+  /* Radii referenced directly by the copied coss-ui primitives */
+  --r-xs: 6px;
+  --r-sm: 10px;
+  --r-lg: 14px;
+
+  /* App shell sidebar (Pretace layout, Taskly colours). */
+  --app-sidebar-bg: #ffffff;
+  --app-sidebar-border: #e9e6e0;
+  --app-sidebar-hover: #f5f3ef;
+  --app-sidebar-active: #fdf3dc;
+  --app-sidebar-text: #57524a;
+  --app-sidebar-text-active: #7a5200;
+  --app-sidebar-icon: #6b665d;
+  --app-sidebar-icon-active: #9a6700;
+
+  --scrollbar-thumb: rgba(28, 26, 23, 0.2);
+  --scrollbar-thumb-hover: rgba(28, 26, 23, 0.36);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+  }
+  html[lang="ar"] {
+    font-family: var(--font-arabic);
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+  ::selection {
+    background: var(--selection);
+  }
+}
+
+@layer utilities {
+  /* Heading: Plus Jakarta Sans bold in English, Cairo in Arabic. */
+  .font-display {
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  html[lang="ar"] .font-display {
+    font-family: var(--font-arabic);
+    letter-spacing: 0;
+  }
+  /* Pretace overline: small uppercase tracked label. */
+  .eyebrow {
+    font-size: 11px;
+    line-height: 16px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--foreground-muted);
+  }
+  html[lang="ar"] .eyebrow {
+    letter-spacing: 0;
+    text-transform: none;
+    font-size: 12px;
+  }
+  /* Mirror directional icons in RTL. */
+  html[dir="rtl"] .rtl-flip {
+    transform: scaleX(-1);
+  }
+}

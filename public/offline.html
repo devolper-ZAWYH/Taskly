@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Offline · Taskly</title>
+    <style>
+      :root { color-scheme: light; }
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        display: grid;
+        place-items: center;
+        background: #ffffff;
+        color: #171717;
+        font: 15px/1.5 system-ui, "Segoe UI", sans-serif;
+        padding: 16px;
+        box-sizing: border-box;
+        text-align: center;
+      }
+      img { width: 56px; height: 56px; }
+      h1 { font-size: 22px; margin: 16px 0 4px; }
+      p { margin: 0 0 4px; color: #666666; }
+      button {
+        margin-top: 20px;
+        height: 40px;
+        padding: 0 16px;
+        border: 0;
+        border-radius: 10px;
+        background: #171717;
+        color: #ffffff;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="/icons/icon-192.png" alt="Taskly" />
+      <h1>You're offline</h1>
+      <p>Check your connection, then try again.</p>
+      <p dir="rtl" lang="ar">أنت غير متصل بالإنترنت. تحقّق من الاتصال ثم حاول مجددًا.</p>
+      <button type="button" onclick="location.reload()">Try again · حاول مجددًا</button>
+    </main>
+  </body>
+</html>

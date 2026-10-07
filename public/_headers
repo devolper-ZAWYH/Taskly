@@ -1,0 +1,4 @@
+# Cloudflare static-asset headers.
+/sw.js
+  Cache-Control: no-cache
+  Content-Type: application/javascript; charset=utf-8
