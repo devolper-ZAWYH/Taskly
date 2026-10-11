@@ -1,8 +1,9 @@
 import { AppError } from "@/lib/api/core"
-import { canEditMeeting } from "@/lib/permissions"
+import { canCreateMeeting, canEditMeeting } from "@/lib/permissions"
 import type { Meeting, MeetingInput, MeetingOption, Task } from "@/lib/types"
 import { requireWorkspace, requireWorkspaceAdmin, type Actor, type Ctx } from "@/server/context"
 import { newId } from "@/server/crypto"
+import { queueGoogleSync } from "@/server/google/queue"
 import {
   all,
   first,
@@ -63,6 +64,21 @@ async function findVisible(
 
 export async function getMeeting(ctx: Ctx, accountId: string, id: unknown): Promise<Meeting> {
   return (await findVisible(ctx, accountId, id)).meeting
+}
+
+/** A meeting by id within the workspace, whoever is asking (internal use). */
+export async function findMeeting(
+  ctx: Ctx,
+  accountId: string,
+  id: string,
+): Promise<Meeting | null> {
+  const row = await first<MeetingRow>(
+    ctx.db,
+    `SELECT ${MEETING_COLUMNS} FROM meetings m WHERE m.id = ? AND m.account_id = ?`,
+    id,
+    accountId,
+  )
+  return row ? toMeeting(row) : null
 }
 
 /** Action items: tasks created from this meeting. */
@@ -144,6 +160,18 @@ function attendeeStatements(ctx: Ctx, meetingId: string, ids: string[]): D1Prepa
 
 export async function createMeeting(ctx: Ctx, accountId: string, raw: unknown): Promise<Meeting> {
   const actor = await requireWorkspaceAdmin(ctx, accountId)
+  const meeting = await createMeetingAs(ctx, actor, raw)
+  await queueGoogleSync(ctx, "meeting", accountId, meeting.id)
+  return meeting
+}
+
+/**
+ * Create a meeting organised by `actor` (an administrator): from the app, or
+ * from their Google calendar. Callers queue the Google sync.
+ */
+export async function createMeetingAs(ctx: Ctx, actor: Actor, raw: unknown): Promise<Meeting> {
+  if (!canCreateMeeting(actor)) throw new AppError("forbidden")
+  const accountId = actor.account.id
   const input = await validate(ctx, accountId, raw)
   const id = newId("m")
   const now = nowIso()
@@ -169,7 +197,7 @@ export async function createMeeting(ctx: Ctx, accountId: string, raw: unknown): 
       ),
     ...attendeeStatements(ctx, id, input.attendeeIds),
   ])
-  const meeting = await getMeeting(ctx, accountId, id)
+  const meeting = (await findMeeting(ctx, accountId, id))!
   await notify(ctx, {
     recipients: meeting.attendeeIds,
     actorId: actor.id,
@@ -202,7 +230,23 @@ export async function updateMeeting(
   raw: unknown,
 ): Promise<Meeting> {
   const { actor, meeting } = await findVisible(ctx, accountId, id)
+  const next = await applyMeetingUpdate(ctx, actor, meeting, raw)
+  await queueGoogleSync(ctx, "meeting", accountId, meeting.id)
+  return next
+}
+
+/**
+ * Change a meeting as `actor` (administrators only), from the app or from
+ * their Google calendar. Callers queue the Google sync.
+ */
+export async function applyMeetingUpdate(
+  ctx: Ctx,
+  actor: Actor,
+  meeting: Meeting,
+  raw: unknown,
+): Promise<Meeting> {
   if (!canEditMeeting(actor)) throw new AppError("forbidden")
+  const accountId = actor.account.id
   const input = await validate(ctx, accountId, raw, meeting.attendeeIds)
   await ctx.db.batch([
     ctx.db
@@ -223,7 +267,7 @@ export async function updateMeeting(
       ),
     ...attendeeStatements(ctx, meeting.id, input.attendeeIds),
   ])
-  const next = await getMeeting(ctx, accountId, meeting.id)
+  const next = (await findMeeting(ctx, accountId, meeting.id))!
   const invited = next.attendeeIds.filter((id) => !meeting.attendeeIds.includes(id))
   const common = { actorId: actor.id, accountId, data: meetingData(actor, next), link: meetingLink(next) }
   await notify(ctx, { ...common, recipients: invited, event: "meeting_invited" })
@@ -246,7 +290,14 @@ export async function updateMeeting(
 /** Deletes the meeting; its action-item tasks stay but lose the link. */
 export async function deleteMeeting(ctx: Ctx, accountId: string, id: unknown): Promise<void> {
   const { actor, meeting } = await findVisible(ctx, accountId, id)
+  await deleteMeetingAs(ctx, actor, meeting)
+  await queueGoogleSync(ctx, "meeting", accountId, meeting.id)
+}
+
+/** Delete as `actor` (administrators only). Callers queue the Google sync. */
+export async function deleteMeetingAs(ctx: Ctx, actor: Actor, meeting: Meeting): Promise<void> {
   if (!canEditMeeting(actor)) throw new AppError("forbidden")
+  const accountId = actor.account.id
   await ctx.db.prepare("DELETE FROM meetings WHERE id = ?").bind(meeting.id).run()
   await notify(ctx, {
     recipients: meeting.attendeeIds,

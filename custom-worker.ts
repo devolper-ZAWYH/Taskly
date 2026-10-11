@@ -1,11 +1,12 @@
 /**
- * Worker entry: the OpenNext-generated app for HTTP, plus the hourly Cron
- * Trigger that sends due date reminders.
+ * Worker entry: the OpenNext-generated app for HTTP, plus the Cron Triggers:
+ * hourly due date reminders, and Google sync every 5 minutes.
  */
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment -- the file only exists after a build
 // @ts-ignore `.open-next/worker.js` is generated at build time
 import { default as handler } from "./.open-next/worker.js"
 import type { Ctx } from "@/server/context"
+import { runGoogleSync } from "@/server/google/cron"
 import { runDueReminders } from "@/server/services/reminders"
 
 export default {
@@ -21,7 +22,13 @@ export default {
       clearSessionCookie: () => {},
       waitUntil: (promise) => ctx.waitUntil(promise),
     }
-    const sent = await runDueReminders(system, new Date(controller.scheduledTime))
+    const at = new Date(controller.scheduledTime)
+    if (controller.cron === "*/5 * * * *") {
+      const ran = await runGoogleSync(system, at)
+      if (ran > 0) console.log(`google sync: ${ran} jobs`)
+      return
+    }
+    const sent = await runDueReminders(system, at)
     console.log(`due date reminders: ${sent} sent`)
   },
 } satisfies ExportedHandler<CloudflareEnv>

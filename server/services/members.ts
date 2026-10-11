@@ -6,6 +6,7 @@ import { AppError } from "@/lib/api/core"
 import type { AddMemberResult, Page, WorkspaceMember } from "@/lib/types"
 import { requireWorkspace, requireWorkspaceAdmin, type Ctx } from "@/server/context"
 import { hashPassword, newId, newTemporaryPassword } from "@/server/crypto"
+import { enqueue } from "@/server/google/queue"
 import { notify } from "@/server/services/notifications"
 import {
   all,
@@ -150,6 +151,8 @@ export async function addMember(
     data: { actor: actor.user.name, workspace: actor.account.name },
     link: `/w/${accountId}/dashboard`,
   })
+  // If they've connected Google, the workspace's list and calendar appear there.
+  await enqueue(ctx, [{ kind: "setup_member", userId, accountId }])
   return { member: (await findMember(ctx, accountId, userId))!, temporaryPassword }
 }
 
@@ -182,4 +185,6 @@ export async function removeMember(ctx: Ctx, accountId: string, userId: unknown)
     .prepare("DELETE FROM memberships WHERE account_id = ? AND user_id = ?")
     .bind(accountId, id)
     .run()
+  // Their copy of this workspace leaves their Google account too.
+  await enqueue(ctx, [{ kind: "purge_member", userId: id, accountId }])
 }

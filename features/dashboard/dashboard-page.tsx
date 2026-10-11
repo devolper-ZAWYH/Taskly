@@ -15,12 +15,17 @@ import { UserAvatar } from "@/components/shell/user-avatar"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useCurrentUser } from "@/features/auth/use-auth"
 import { toDateKey } from "@/features/calendar/lib/calendar-utils"
+import {
+  GoogleEventGroup,
+  GoogleTaskGroup,
+  useGoogleToday,
+} from "@/features/google/dashboard-google"
 import { StatusBadge } from "@/features/tasks/components/task-badges"
 import { formatTaskRef } from "@/features/tasks/lib/task-meta"
 import { useWorkspace, useWorkspacePath } from "@/features/workspace/workspace-context"
 import { getDashboard } from "@/lib/api/dashboard"
 import { useLocale } from "@/lib/i18n/locale-provider"
-import type { Dashboard, Meeting, PersonLoad, Task } from "@/lib/types"
+import type { Dashboard, Meeting, PersonalTask, PersonLoad, Task } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 /** Lives under the tasks cache key, so task and meeting changes refresh it. */
@@ -72,6 +77,8 @@ export function DashboardPage(): React.ReactElement {
 function DashboardBody({ data, isAdmin }: { data: Dashboard; isAdmin: boolean }) {
   const { t } = useLocale()
   const meetingsToday = data.meetings.filter((m) => m.date === data.today).length
+  // The viewer's own Google items for today (empty unless they're connected).
+  const google = useGoogleToday(data.today)
   return (
     <>
       {data.team ? (
@@ -122,9 +129,10 @@ function DashboardBody({ data, isAdmin }: { data: Dashboard; isAdmin: boolean })
           action={<ViewAll path="/tasks" />}
           className="lg:col-span-2"
         >
-          <MyTasks data={data} />
+          <MyTasks data={data} googleTasks={google.tasks} />
         </Card>
         <Card title={t("dashboard.meetingsTitle")} action={<ViewAll path="/calendar" />}>
+          <GoogleEventGroup events={google.events} today={data.today} />
           <MeetingList meetings={data.meetings} today={data.today} />
         </Card>
       </div>
@@ -211,14 +219,14 @@ function ViewAll({ path }: { path: string }) {
   )
 }
 
-function MyTasks({ data }: { data: Dashboard }) {
+function MyTasks({ data, googleTasks }: { data: Dashboard; googleTasks: PersonalTask[] }) {
   const { t } = useLocale()
   const groups = [
     { key: "overdue", label: t("dashboard.groups.overdue"), tasks: data.mine.overdue },
     { key: "today", label: t("dashboard.groups.today"), tasks: data.mine.dueToday },
     { key: "next", label: t("dashboard.groups.next7"), tasks: data.mine.upcoming },
   ].filter((g) => g.tasks.length > 0)
-  if (groups.length === 0) {
+  if (groups.length === 0 && googleTasks.length === 0) {
     return (
       <p className="flex items-center justify-center gap-2 px-4 py-12 text-sm text-foreground-muted">
         <CheckCheckIcon className="size-4" />
@@ -241,6 +249,7 @@ function MyTasks({ data }: { data: Dashboard }) {
           <TaskList tasks={group.tasks} today={data.today} />
         </div>
       ))}
+      <GoogleTaskGroup tasks={googleTasks} today={data.today} />
     </div>
   )
 }

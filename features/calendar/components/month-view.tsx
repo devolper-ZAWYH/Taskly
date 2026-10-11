@@ -1,7 +1,12 @@
 "use client"
 
-import { MeetingChip, TaskChip } from "@/features/calendar/components/calendar-items"
+import {
+  MeetingChip,
+  PersonalEventChip,
+  TaskChip,
+} from "@/features/calendar/components/calendar-items"
 import { getMonthGridDays, toDateKey } from "@/features/calendar/lib/calendar-utils"
+import { spanSortKey, spansOn, type EventSpan } from "@/features/google/personal-events"
 import { useLocale } from "@/lib/i18n/locale-provider"
 import type { Meeting, Task } from "@/lib/types"
 import { useNow } from "@/lib/use-now"
@@ -13,17 +18,22 @@ export function MonthView({
   month,
   meetings,
   tasks,
+  events = [],
   onOpenMeeting,
   onOpenTask,
+  onOpenEvent,
   onCreateAt,
   onShowDay,
 }: {
   month: Date
   meetings: Meeting[]
   tasks: Task[]
+  /** The viewer's own Google events (only theirs, only when shown). */
+  events?: EventSpan[]
   onOpenMeeting: (meeting: Meeting) => void
   onOpenTask: (task: Task) => void
-  /** Only for people who may create meetings. */
+  onOpenEvent?: (span: EventSpan) => void
+  /** Only for people who may create meetings or events. */
   onCreateAt?: (dateKey: string) => void
   onShowDay: (day: Date) => void
 }): React.ReactElement {
@@ -44,10 +54,20 @@ export function MonthView({
       <div className="grid grid-cols-7">
         {days.map((day) => {
           const key = toDateKey(day)
-          const dayMeetings = meetings.filter((m) => m.date === key)
           const dayTasks = tasks.filter((task) => task.dueDate === key)
+          // All-day events first, then meetings and timed events by start time, then tasks.
+          const timed = [
+            ...meetings
+              .filter((m) => m.date === key)
+              .map((m) => ({ kind: "meeting" as const, m, at: m.startTime })),
+            ...spansOn(events, key).map((span) => ({
+              kind: "event" as const,
+              span,
+              at: spanSortKey(span, key),
+            })),
+          ].sort((a, b) => a.at.localeCompare(b.at))
           const items = [
-            ...dayMeetings.map((m) => ({ kind: "meeting" as const, m })),
+            ...timed,
             ...dayTasks.map((task) => ({ kind: "task" as const, task })),
           ]
           const hidden = items.length - MAX_ITEMS
@@ -80,6 +100,13 @@ export function MonthView({
                 .map((item) =>
                   item.kind === "meeting" ? (
                     <MeetingChip key={item.m.id} meeting={item.m} onOpen={onOpenMeeting} />
+                  ) : item.kind === "event" ? (
+                    <PersonalEventChip
+                      key={`google-${item.span.event.id}`}
+                      span={item.span}
+                      dayKey={key}
+                      onOpen={onOpenEvent ?? (() => {})}
+                    />
                   ) : (
                     <TaskChip key={item.task.id} task={item.task} onOpen={onOpenTask} />
                   ),

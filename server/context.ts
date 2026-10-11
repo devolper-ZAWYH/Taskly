@@ -90,6 +90,31 @@ export async function requireWorkspace(ctx: Ctx, accountId: unknown): Promise<Ac
   return { id: user.id, role: row.role, user, account }
 }
 
+/**
+ * Someone acting in a workspace without a browser session (changes arriving
+ * from their Google account). Null unless they are an active member of an
+ * active workspace. Operators act only where they are members.
+ */
+export async function actorFor(ctx: Ctx, userId: string, accountId: string): Promise<Actor | null> {
+  const [userRow, row] = await Promise.all([
+    first<UserRow>(
+      ctx.db,
+      "SELECT * FROM users WHERE id = ? AND active = 1 AND deleted_at IS NULL",
+      userId,
+    ),
+    first<AccountRow & { role: Role }>(
+      ctx.db,
+      `SELECT a.*, ms.role FROM accounts a
+       JOIN memberships ms ON ms.account_id = a.id AND ms.user_id = ?
+       WHERE a.id = ? AND a.active = 1`,
+      userId,
+      accountId,
+    ),
+  ])
+  if (!userRow || !row) return null
+  return { id: userId, role: row.role, user: toUser(userRow), account: toAccount(row) }
+}
+
 export async function requireWorkspaceAdmin(ctx: Ctx, accountId: unknown): Promise<Actor> {
   const actor = await requireWorkspace(ctx, accountId)
   if (actor.role !== "administrator") throw new AppError("forbidden")

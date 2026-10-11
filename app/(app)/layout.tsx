@@ -8,6 +8,7 @@ import { Sidebar } from "@/components/shell/sidebar"
 import { SidebarCollapseProvider } from "@/components/shell/sidebar-collapse"
 import { NotificationsProvider } from "@/features/notifications/notifications-panel"
 import { useMe } from "@/features/auth/use-auth"
+import { GoogleSyncOnOpen } from "@/features/google/sync-on-open"
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -29,6 +30,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <SidebarCollapseProvider>
       <NotificationsProvider>
+        <GoogleSyncOnOpen />
         <div className="flex min-h-svh">
           <Sidebar />
           <div className="flex w-0 min-w-0 flex-1 flex-col">

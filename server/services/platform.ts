@@ -27,6 +27,7 @@ import {
 } from "@/server/db"
 import { looksLikeImage } from "@/server/images"
 import { membersOf } from "@/server/services/members"
+import { enqueue } from "@/server/google/queue"
 import { notify } from "@/server/services/notifications"
 import {
   assertEmail,
@@ -277,6 +278,8 @@ export async function updateUser(ctx: Ctx, id: unknown, input: unknown): Promise
     // Deactivation signs the person out everywhere.
     ...(next.active ? [] : [ctx.db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(userId)]),
   ])
+  // …and disconnects their Google account (removing the workspace copies there).
+  if (row.active === 1 && !next.active) await enqueue(ctx, [{ kind: "purge_user", userId }])
   return next
 }
 
@@ -319,6 +322,7 @@ export async function deleteUser(ctx: Ctx, id: unknown): Promise<void> {
       )
       .bind(nowIso(), userId),
   ])
+  await enqueue(ctx, [{ kind: "purge_user", userId }])
 }
 
 /** Attach a user to an account (workspace) with a role. */
@@ -364,6 +368,7 @@ export async function attachUser(
     data: { actor: operator.name, workspace: accountRow.name },
     link: `/w/${account}/dashboard`,
   })
+  await enqueue(ctx, [{ kind: "setup_member", userId: user, accountId: account }])
 }
 
 export async function setMembershipRole(
@@ -381,5 +386,16 @@ export async function setMembershipRole(
 
 export async function detachUser(ctx: Ctx, membershipId: unknown): Promise<void> {
   await requireOperator(ctx)
-  await run(ctx.db, "DELETE FROM memberships WHERE id = ?", str(membershipId, 100))
+  const id = str(membershipId, 100)
+  const membership = await first<{ user_id: string; account_id: string }>(
+    ctx.db,
+    "SELECT user_id, account_id FROM memberships WHERE id = ?",
+    id,
+  )
+  await run(ctx.db, "DELETE FROM memberships WHERE id = ?", id)
+  if (membership) {
+    await enqueue(ctx, [
+      { kind: "purge_member", userId: membership.user_id, accountId: membership.account_id },
+    ])
+  }
 }

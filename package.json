@@ -10,6 +10,7 @@
     "start": "next start --port 3100",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
+    "test": "node --test server/google/*.test.ts",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",

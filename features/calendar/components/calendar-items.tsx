@@ -1,7 +1,10 @@
 "use client"
 
 import { CircleCheckIcon, CircleIcon } from "lucide-react"
+import { eventBarStyle, GoogleMark } from "@/features/google/google-mark"
+import { spanTimesOn, type EventSpan } from "@/features/google/personal-events"
 import { formatTaskRef, isOverdue } from "@/features/tasks/lib/task-meta"
+import { useLocale } from "@/lib/i18n/locale-provider"
 import type { Meeting, Task } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -71,6 +74,51 @@ export function TaskChip({
       </span>
       <span dir="auto" className="truncate">
         {task.title}
+      </span>
+    </button>
+  )
+}
+
+/**
+ * Personal Google event chip: white with its calendar's colour bar and a "G"
+ * mark, so it never reads as a workspace meeting.
+ */
+export function PersonalEventChip({
+  span,
+  dayKey,
+  onOpen,
+  className,
+}: {
+  span: EventSpan
+  dayKey: string
+  onOpen: (span: EventSpan) => void
+  className?: string
+}): React.ReactElement {
+  const { t } = useLocale()
+  // The start time only on the day it starts; later days of an overnight event just show the title.
+  const times = dayKey === span.startKey ? spanTimesOn(span, dayKey) : null
+  return (
+    <button
+      type="button"
+      data-google-event-id={span.event.id}
+      onClick={(e) => {
+        e.stopPropagation()
+        onOpen(span)
+      }}
+      className={cn(
+        "flex w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-sm border border-s-[3px] bg-background px-1.5 py-0.5 text-start text-xs transition-colors hover:bg-surface-hover",
+        className,
+      )}
+      style={eventBarStyle(span.event.color)}
+    >
+      <GoogleMark />
+      {times ? (
+        <span className="shrink-0 tabular-nums opacity-70" dir="ltr">
+          {times.from}
+        </span>
+      ) : null}
+      <span dir="auto" className="truncate font-medium">
+        {span.event.title || t("google.noTitle")}
       </span>
     </button>
   )

@@ -28,11 +28,18 @@ import {
   type CalendarView,
 } from "@/features/calendar/lib/calendar-utils"
 import { ME_KEY, useCurrentUser } from "@/features/auth/use-auth"
+import { useGoogleConnected, usePersonalEvents } from "@/features/google/hooks"
+import {
+  PersonalEventFormDialog,
+  type PersonalEventFormState,
+} from "@/features/google/personal-event-form"
+import { PersonalEventPanel } from "@/features/google/personal-event-panel"
+import { toEventSpan, toEventSpans, type EventSpan } from "@/features/google/personal-events"
 import { useWorkspace, useWorkspacePath } from "@/features/workspace/workspace-context"
 import { formatTaskRef } from "@/features/tasks/lib/task-meta"
 import { updateMe } from "@/lib/api/auth"
 import { useLocale } from "@/lib/i18n/locale-provider"
-import type { CalendarPreference, Meeting, Task } from "@/lib/types"
+import type { CalendarPreference, Meeting, PersonalEvent, Task } from "@/lib/types"
 import { useMediaQuery } from "@/lib/use-media-query"
 import { cn } from "@/lib/utils"
 
@@ -83,10 +90,25 @@ export function CalendarPage(): React.ReactElement {
   const [showTasks, setShowTasks] = React.useState(true)
   const [form, setForm] = React.useState<MeetingFormState | null>(null)
 
+  // The viewer's own Google events: only theirs, only when connected and shown.
+  const googleConnected = useGoogleConnected()
+  const [showGoogle, setShowGoogle] = React.useState(true)
+  const [eventPanel, setEventPanel] = React.useState<{ span: EventSpan; open: boolean } | null>(
+    null,
+  )
+  const [eventForm, setEventForm] = React.useState<PersonalEventFormState | null>(null)
+
   const range = getViewRange(view, date)
   const meetings = useMeetings(range)
   const tasks = useCalendarTasks(range, showTasks)
   const visibleTasks = showTasks ? (tasks.data ?? []) : []
+  const googleShown = googleConnected && showGoogle
+  const personalEvents = usePersonalEvents(range, googleShown)
+  const eventData = personalEvents.data
+  const events = React.useMemo(
+    () => (googleShown && eventData ? toEventSpans(eventData) : []),
+    [googleShown, eventData],
+  )
 
   function setParams(next: Record<string, string | null>) {
     const params = new URLSearchParams(searchParams.toString())
@@ -102,6 +124,17 @@ export function CalendarPage(): React.ReactElement {
 
   const openMeeting = (meeting: Meeting) => setParams({ meeting: meeting.id })
   const openTask = (task: Task) => router.push(wsPath(`/tasks?task=${formatTaskRef(task.number)}`))
+  const openEvent = (span: EventSpan) => setEventPanel({ span, open: true })
+
+  /** After saving a personal event: make sure it's visible, then show it. */
+  function showSavedEvent(event: PersonalEvent) {
+    const span = toEventSpan(event)
+    setForm(null)
+    setEventForm(null)
+    setShowGoogle(true)
+    setParams({ date: span.startKey })
+    setEventPanel({ span, open: true })
+  }
 
   function createAt(dateKey: string, hour = 9) {
     setForm({
@@ -118,6 +151,26 @@ export function CalendarPage(): React.ReactElement {
       },
     })
   }
+
+  /** Members can't create meetings; when connected they add events to their own Google Calendar. */
+  function createEventAt(dateKey: string, hour = 9) {
+    setEventForm({
+      mode: "create",
+      initial: {
+        title: "",
+        description: "",
+        location: "",
+        date: dateKey,
+        startTime: `${pad(hour)}:00`,
+        endTime: `${pad(Math.min(hour + 1, 23))}:00`,
+        allDay: false,
+      },
+    })
+  }
+
+  const canCreate = isAdmin || googleConnected
+  const createAtSlot = isAdmin ? createAt : createEventAt
+  const nextHour = () => Math.min(new Date().getHours() + 1, 19)
 
   const title =
     view === "month"
@@ -152,13 +205,14 @@ export function CalendarPage(): React.ReactElement {
         title={t("calendar.title")}
         actions={
           isAdmin ? (
-            <Button
-              onClick={() =>
-                createAt(toDateKey(new Date()), Math.min(new Date().getHours() + 1, 19))
-              }
-            >
+            <Button onClick={() => createAt(toDateKey(new Date()), nextHour())}>
               <PlusIcon />
               {t("calendar.newMeeting")}
+            </Button>
+          ) : googleConnected ? (
+            <Button onClick={() => createEventAt(toDateKey(new Date()), nextHour())}>
+              <PlusIcon />
+              {t("google.calendar.newEvent")}
             </Button>
           ) : null
         }
@@ -189,11 +243,25 @@ export function CalendarPage(): React.ReactElement {
             {title}
           </h2>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground-secondary">
             <Switch checked={showTasks} onCheckedChange={setShowTasks} />
             {t("calendar.showTasks")}
           </label>
+          {googleConnected ? (
+            <label
+              className="flex cursor-pointer items-center gap-2 text-sm text-foreground-secondary"
+              data-testid="google-events-toggle"
+            >
+              <Switch checked={showGoogle} onCheckedChange={setShowGoogle} />
+              {t("google.calendar.showEvents")}
+              {googleShown && personalEvents.isError ? (
+                <span className="text-xs text-destructive-foreground">
+                  {t("google.calendar.loadError")}
+                </span>
+              ) : null}
+            </label>
+          ) : null}
           <div className="hidden rounded-md border p-0.5 sm:inline-flex" role="group">
             {(["month", "week"] as const).map((v) => (
               <button
@@ -221,9 +289,11 @@ export function CalendarPage(): React.ReactElement {
             month={date}
             meetings={meetings.data ?? []}
             tasks={visibleTasks}
+            events={events}
             onOpenMeeting={openMeeting}
             onOpenTask={openTask}
-            onCreateAt={isAdmin ? (key) => createAt(key) : undefined}
+            onOpenEvent={openEvent}
+            onCreateAt={canCreate ? (key) => createAtSlot(key) : undefined}
             onShowDay={(day) => go("week", day)}
           />
         ) : (
@@ -232,9 +302,11 @@ export function CalendarPage(): React.ReactElement {
             meetings={meetings.data ?? []}
             tasks={visibleTasks}
             showTasks={showTasks}
+            events={events}
             onOpenMeeting={openMeeting}
             onOpenTask={openTask}
-            onCreateAt={isAdmin ? createAt : undefined}
+            onOpenEvent={openEvent}
+            onCreateAt={canCreate ? createAtSlot : undefined}
           />
         )}
       </div>
@@ -268,6 +340,7 @@ export function CalendarPage(): React.ReactElement {
             selectedKey={selectedKey}
             meetings={meetings.data ?? []}
             tasks={visibleTasks}
+            events={events}
             onSelect={(key) => {
               setPickedDay(key)
               // A dimmed day from the next/previous month: go to that month.
@@ -275,14 +348,17 @@ export function CalendarPage(): React.ReactElement {
             }}
             onOpenMeeting={openMeeting}
             onOpenTask={openTask}
+            onOpenEvent={openEvent}
           />
         ) : (
           <AgendaView
             days={agendaDays}
             meetings={meetings.data ?? []}
             tasks={visibleTasks}
+            events={events}
             onOpenMeeting={openMeeting}
             onOpenTask={openTask}
+            onOpenEvent={openEvent}
           />
         )}
       </div>
@@ -300,6 +376,18 @@ export function CalendarPage(): React.ReactElement {
           setForm(null)
           setParams({ meeting: meeting.id, date: meeting.date })
         }}
+        onSavedPersonal={showSavedEvent}
+      />
+      <PersonalEventPanel
+        span={eventPanel?.span ?? null}
+        open={eventPanel?.open ?? false}
+        onClose={() => setEventPanel((p) => (p ? { ...p, open: false } : p))}
+        onEdit={(span) => setEventForm({ mode: "edit", span })}
+      />
+      <PersonalEventFormDialog
+        state={eventForm}
+        onClose={() => setEventForm(null)}
+        onSaved={showSavedEvent}
       />
     </div>
   )

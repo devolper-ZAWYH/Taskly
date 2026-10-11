@@ -4,6 +4,7 @@
  */
 import * as auth from "@/server/services/auth"
 import * as dashboard from "@/server/services/dashboard"
+import * as google from "@/server/services/google"
 import * as meetings from "@/server/services/meetings"
 import * as notifications from "@/server/services/notifications"
 import * as members from "@/server/services/members"
@@ -52,6 +53,20 @@ export const api = {
   getPushPublicKey: notifications.getPushPublicKey,
   savePushSubscription: notifications.savePushSubscription,
   removePushSubscription: notifications.removePushSubscription,
+
+  getGoogleStatus: google.getGoogleStatus,
+  syncGoogleNow: google.syncGoogleNow,
+  disconnectGoogle: google.disconnectGoogle,
+  listGoogleContainers: google.listGoogleContainers,
+  setGoogleContainerSelected: google.setGoogleContainerSelected,
+  listPersonalTasks: google.listPersonalTasks,
+  createPersonalTask: google.createPersonalTask,
+  updatePersonalTask: google.updatePersonalTask,
+  deletePersonalTask: google.deletePersonalTask,
+  listPersonalEvents: google.listPersonalEvents,
+  createPersonalEvent: google.createPersonalEvent,
+  updatePersonalEvent: google.updatePersonalEvent,
+  deletePersonalEvent: google.deletePersonalEvent,
 
   listAccounts: platform.listAccounts,
   getAccount: platform.getAccount,

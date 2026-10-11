@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
 import { toastManager } from "@/components/ui/toast"
 import { ME_KEY, useCurrentUser } from "@/features/auth/use-auth"
+import { GoogleSettings } from "@/features/google/google-settings"
 import { NotificationSettings } from "@/features/notifications/notification-settings"
 import { InstallApp } from "@/features/settings/install-app"
 import { ShareApp } from "@/features/settings/share-app"
@@ -121,6 +122,13 @@ export default function SettingsPage() {
             </Button>
           </div>
         </form>
+      </Section>
+
+      <Section title={t("google.settings.title")} hint={t("google.settings.hint")}>
+        {/* Reads ?google=… after Google's consent screen, so it needs a Suspense boundary. */}
+        <React.Suspense>
+          <GoogleSettings />
+        </React.Suspense>
       </Section>
 
       <Section title={t("notifications.settingsTitle")} hint={t("notifications.settingsHint")}>

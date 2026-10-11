@@ -119,6 +119,50 @@ printed once.
 - Push keys: `VAPID_PUBLIC_KEY` (in `wrangler.jsonc`) and the
   `VAPID_PRIVATE_KEY` secret (`wrangler secret put`, and `.dev.vars` locally).
 
+## Google Calendar and Google Tasks (two-way sync)
+
+Design: `docs/plan-google-sync.md`. Each person connects their own Google
+account in Settings.
+
+- **Workspace items.**
+  - Tasks assigned to them and meetings they organise or attend are copied into
+    a "Taskly · <Workspace>" task list and calendar in their Google account.
+  - Edits go both ways, with the same rules as the app: members can only tick
+    tasks done in Google; their other edits are undone, with a notice.
+  - New items an administrator adds to those lists/calendars become workspace
+    tasks or meetings.
+- **Personal items.** Their own Google Tasks and calendars show in Taskly, read
+  and written live and private to them: the Personal tab on Tasks, the "Google
+  events" switch on the Calendar, and the dashboard.
+- **How it runs.**
+  - Writes queue jobs in `google_sync_jobs`; the jobs run right after the
+    response, and every 5 minutes from the second Cron Trigger
+    (`server/google/cron.ts`).
+  - Google Tasks is polled, because it has no push.
+  - Calendars use push notifications to `/api/google/webhook` when `APP_ORIGIN`
+    is a public https URL; otherwise they are polled.
+  - "Sync now" in Settings, and opening the app, pull right away.
+
+Setup:
+
+1. In Google Cloud: enable the Calendar API and the Tasks API, configure the
+   OAuth consent screen, and create an OAuth client of type **Web
+   application**. Its redirect URIs are `http://localhost:3100/api/google/callback`
+   and `https://<your domain>/api/google/callback`.
+2. Copy `.dev.vars.example` to `.dev.vars` and fill in `GOOGLE_CLIENT_ID`,
+   `GOOGLE_CLIENT_SECRET` and `GOOGLE_TOKEN_KEY` (32 random bytes, base64). In
+   production use `wrangler secret put` for each, and set `APP_ORIGIN` in
+   `wrangler.jsonc`.
+3. Run `yarn db:migrate:local` (or `:remote`) for `migrations/0007_google_sync.sql`.
+4. While the consent screen is in *Testing*, only listed test users can connect,
+   and Google expires their access after 7 days. Publish the app (Google reviews
+   the Calendar/Tasks scopes) before real users connect.
+
+Without a Google project, `node scripts/google-mock.mjs` runs a local stand-in
+for Google (OAuth, Tasks, Calendar). Point `GOOGLE_API_ORIGIN` and
+`GOOGLE_OAUTH_ORIGIN` at it, with any client id and secret. Unit tests for the
+mapping and merge logic: `yarn test`.
+
 ## Structure
 
 - `server/`: the backend.
@@ -128,6 +172,13 @@ printed once.
     (operator-only). Each validates its input (`validate.ts`) and runs SQL.
   - `crypto.ts`: password hashing and session tokens. `db.ts`: D1 helpers and
     row mapping.
+  - `google/*`: Google sync.
+    - `oauth.ts` and `client.ts`: sign-in and token handling.
+    - `mapping.ts` and `merge.ts`: pure logic, with unit tests.
+    - `queue.ts`: the outbox.
+    - `sync-tasks.ts`, `sync-meetings.ts` and `pull.ts`: the two directions.
+    - `personal.ts`: the person's own Google items.
+    - Route handlers live in `app/api/google/*`.
 - `app/api/rpc/[method]/route.ts`: the HTTP endpoint.
 - `lib/api/*`: the browser side, with typed functions that call the server.
 - `lib/permissions.ts`: who may see or change what, shared by server and UI.

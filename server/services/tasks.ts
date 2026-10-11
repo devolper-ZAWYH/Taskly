@@ -10,6 +10,7 @@ import {
 import type { Page, Task, TaskInput } from "@/lib/types"
 import { requireWorkspace, requireWorkspaceAdmin, type Actor, type Ctx } from "@/server/context"
 import { newId } from "@/server/crypto"
+import { queueGoogleSync } from "@/server/google/queue"
 import { notify } from "@/server/services/notifications"
 import {
   all,
@@ -40,7 +41,7 @@ const DUE_KEY = `CASE WHEN t.due_date = '' THEN '9999' ELSE t.due_date || 'T' ||
 const CLOSED_SQL = `t.status IN ('completed', 'cancelled')`
 const ASSIGNED_TO = `EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = ?)`
 
-async function findTask(ctx: Ctx, accountId: string, id: string): Promise<Task | null> {
+export async function findTask(ctx: Ctx, accountId: string, id: string): Promise<Task | null> {
   const row = await first<TaskRow>(
     ctx.db,
     `SELECT ${TASK_COLUMNS} FROM tasks t WHERE t.id = ? AND t.account_id = ?`,
@@ -189,7 +190,17 @@ function assigneeStatements(ctx: Ctx, taskId: string, ids: string[]): D1Prepared
 
 export async function createTask(ctx: Ctx, accountId: string, raw: unknown): Promise<Task> {
   const actor = await requireWorkspaceAdmin(ctx, accountId)
-  const input = taskInput(raw)
+  const task = await createTaskAs(ctx, actor, taskInput(raw))
+  await queueGoogleSync(ctx, "task", accountId, task.id)
+  return task
+}
+
+/**
+ * Create a task as `actor` (an administrator): from the app, or from their
+ * Google task list. Callers queue the Google sync.
+ */
+export async function createTaskAs(ctx: Ctx, actor: Actor, input: TaskInput): Promise<Task> {
+  const accountId = actor.account.id
   const title = input.title.trim()
   if (!title) throw new AppError("titleRequired")
   await assertAssignees(ctx, accountId, input.assigneeIds)
@@ -250,7 +261,24 @@ export async function updateTask(
   const actor = await requireWorkspace(ctx, accountId)
   const current = await findTask(ctx, accountId, str(id, 100))
   if (!current || !canAccessTask(actor, current)) throw new AppError("notFound")
-  const patch = taskPatch(raw)
+  const task = await applyTaskUpdate(ctx, actor, current, taskPatch(raw))
+  await queueGoogleSync(ctx, "task", accountId, task.id)
+  return task
+}
+
+/**
+ * Change a task the actor can see, with the same rules as the app: members
+ * may only move their own tasks through the workflow. Used for edits made in
+ * the app and in Google. Callers queue the Google sync.
+ */
+export async function applyTaskUpdate(
+  ctx: Ctx,
+  actor: Actor,
+  current: Task,
+  patch: Partial<TaskInput>,
+): Promise<Task> {
+  const accountId = actor.account.id
+  if (!canAccessTask(actor, current)) throw new AppError("notFound")
   if (!canEditTask(actor)) {
     const onlyStatus = Object.keys(patch).every((key) => key === "status")
     if (
@@ -350,6 +378,12 @@ export async function deleteTask(ctx: Ctx, accountId: string, id: unknown): Prom
   const actor = await requireWorkspace(ctx, accountId)
   const task = await findTask(ctx, accountId, str(id, 100))
   if (!task || !canAccessTask(actor, task)) throw new AppError("notFound")
+  await deleteTaskAs(ctx, actor, task)
+  await queueGoogleSync(ctx, "task", accountId, task.id)
+}
+
+/** Delete as `actor` (administrators only). Callers queue the Google sync. */
+export async function deleteTaskAs(ctx: Ctx, actor: Actor, task: Task): Promise<void> {
   if (!canDeleteTask(actor)) throw new AppError("forbidden")
   await ctx.db.prepare("DELETE FROM tasks WHERE id = ?").bind(task.id).run()
 }

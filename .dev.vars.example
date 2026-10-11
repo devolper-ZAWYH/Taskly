@@ -1,0 +1,21 @@
+# Copy to .dev.vars for local development (wrangler and `next dev` read it).
+# In production set each one with `wrangler secret put <NAME>`.
+NEXTJS_ENV=development
+
+# Where this copy of the app runs (links in Google items; webhooks need https).
+APP_ORIGIN=http://localhost:3100
+
+# Web push. Leave empty to turn push off locally.
+VAPID_PRIVATE_KEY=
+
+# Google sync (docs/plan-google-sync.md): an OAuth client of type "Web application"
+# with redirect URI http://localhost:3100/api/google/callback (and the live one).
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+# Encrypts stored Google tokens. 32 random bytes, base64:
+#   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+GOOGLE_TOKEN_KEY=
+
+# Testing only: send Google API / OAuth calls to a mock server (scripts/google-mock.mjs).
+GOOGLE_API_ORIGIN=
+GOOGLE_OAUTH_ORIGIN=

@@ -33,6 +33,11 @@ const EVENT_KIND = {
   task_due_today: "task_reminders",
   task_due_tomorrow: "task_reminders",
   task_overdue: "task_reminders",
+  google_change_reverted: "google_sync",
+  google_task_moved: "google_sync",
+  google_event_moved: "google_sync",
+  google_item_restored: "google_sync",
+  google_reconnect: "google_sync",
 } as const satisfies Record<string, NotificationKind>
 
 export type NotificationEvent = keyof typeof EVENT_KIND

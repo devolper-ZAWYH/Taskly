@@ -18,10 +18,17 @@ import { Textarea } from "@/components/ui/textarea"
 import { TimePicker } from "@/components/ui/time-picker"
 import { toastManager } from "@/components/ui/toast"
 import { useCreateMeeting, useUpdateMeeting } from "@/features/calendar/hooks/use-meetings"
+import { useGoogleConnected } from "@/features/google/hooks"
+import {
+  PersonalEventForm,
+  type PersonalEventDraft,
+} from "@/features/google/personal-event-form"
+import { WhereSwitch } from "@/features/google/where-switch"
 import { AssigneePicker } from "@/features/tasks/components/assignees"
+import { useWorkspace } from "@/features/workspace/workspace-context"
 import type { MeetingInput } from "@/lib/api/meetings"
 import { useLocale } from "@/lib/i18n/locale-provider"
-import type { Meeting } from "@/lib/types"
+import type { Meeting, PersonalEvent } from "@/lib/types"
 
 export type MeetingFormState =
   { mode: "create"; initial: MeetingInput } | { mode: "edit"; meeting: Meeting }
@@ -35,18 +42,101 @@ export function MeetingFormDialog({
   state,
   onClose,
   onSaved,
+  onSavedPersonal,
 }: {
   state: MeetingFormState | null
   onClose: () => void
   onSaved: (meeting: Meeting) => void
+  /** Set to offer "Personal (Google)" as the place for a new meeting (when connected). */
+  onSavedPersonal?: (event: PersonalEvent) => void
 }): React.ReactElement {
+  const connected = useGoogleConnected()
   return (
     <Dialog open={Boolean(state)} onOpenChange={(open) => !open && onClose()}>
       <DialogPopup className="sm:max-w-xl">
         {/* Mounted only while open so each opening starts from its own values. */}
-        {state ? <MeetingForm state={state} onClose={onClose} onSaved={onSaved} /> : null}
+        {state?.mode === "create" && connected && onSavedPersonal ? (
+          <CreateWithWhere
+            initial={state.initial}
+            onClose={onClose}
+            onSaved={onSaved}
+            onSavedPersonal={onSavedPersonal}
+          />
+        ) : state ? (
+          <MeetingForm state={state} onClose={onClose} onSaved={onSaved} />
+        ) : null}
       </DialogPopup>
     </Dialog>
+  )
+}
+
+/** New meeting with a "Where" choice; switching keeps what's been typed so far. */
+function CreateWithWhere({
+  initial,
+  onClose,
+  onSaved,
+  onSavedPersonal,
+}: {
+  initial: MeetingInput
+  onClose: () => void
+  onSaved: (meeting: Meeting) => void
+  onSavedPersonal: (event: PersonalEvent) => void
+}): React.ReactElement {
+  const { account } = useWorkspace()
+  const [choice, setChoice] = React.useState<
+    { where: "workspace"; draft: MeetingInput } | { where: "personal"; draft: PersonalEventDraft }
+  >({ where: "workspace", draft: initial })
+  // Attendees have no place in a personal event; keep them for switching back.
+  const [attendeeIds, setAttendeeIds] = React.useState(initial.attendeeIds)
+
+  if (choice.where === "personal") {
+    return (
+      <PersonalEventForm
+        key="personal"
+        state={{ mode: "create", initial: choice.draft }}
+        onClose={onClose}
+        onSaved={onSavedPersonal}
+        switchTo={{
+          workspaceName: account.name,
+          onWorkspace: (d) =>
+            setChoice({
+              where: "workspace",
+              draft: {
+                title: d.title,
+                notes: d.description,
+                location: d.location,
+                date: d.date,
+                startTime: d.startTime,
+                endTime: d.endTime,
+                attendeeIds,
+              },
+            }),
+        }}
+      />
+    )
+  }
+  return (
+    <MeetingForm
+      key="workspace"
+      state={{ mode: "create", initial: choice.draft }}
+      onClose={onClose}
+      onSaved={onSaved}
+      onSwitchToPersonal={(d) => {
+        setAttendeeIds(d.attendeeIds)
+        setChoice({
+          where: "personal",
+          draft: {
+            title: d.title,
+            description: d.notes,
+            location: d.location,
+            date: d.date,
+            startTime: d.startTime,
+            endTime: d.endTime,
+            allDay: false,
+          },
+        })
+      }}
+    />
   )
 }
 
@@ -54,12 +144,16 @@ function MeetingForm({
   state,
   onClose,
   onSaved,
+  onSwitchToPersonal,
 }: {
   state: MeetingFormState
   onClose: () => void
   onSaved: (meeting: Meeting) => void
+  /** Shows the "Where" choice; hands the draft over when "Personal" is picked. */
+  onSwitchToPersonal?: (draft: MeetingInput) => void
 }): React.ReactElement {
   const { t, errorMessage, formatDate } = useLocale()
+  const { account } = useWorkspace()
   const createMeeting = useCreateMeeting()
   const updateMeeting = useUpdateMeeting()
   const [draft, setDraft] = React.useState<MeetingInput>(
@@ -94,6 +188,14 @@ function MeetingForm({
       </DialogHeader>
       <DialogPanel>
         <div className="flex flex-col gap-5">
+          {onSwitchToPersonal ? (
+            <WhereSwitch
+              value="workspace"
+              workspaceName={account.name}
+              onChange={() => onSwitchToPersonal(draft)}
+            />
+          ) : null}
+
           <FormRow label={t("meetings.form.title")} htmlFor="meeting-title">
             <Input
               id="meeting-title"

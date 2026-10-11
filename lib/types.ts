@@ -181,6 +181,7 @@ export const NOTIFICATION_KINDS = [
   "meeting_invited",
   "meeting_changed",
   "workspace_added",
+  "google_sync",
 ] as const
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number]
 
@@ -221,4 +222,93 @@ export type Dashboard = {
     people: PersonLoad[]
     unassignedTasks: Task[]
   } | null
+}
+
+// ---- Google sync -----------------------------------------------------------
+
+/** A person's Google connection, as Settings shows it. */
+export type GoogleStatus = {
+  /** The server has OAuth credentials; without them there is nothing to connect. */
+  configured: boolean
+  connected: boolean
+  /** The connected Google account's email. */
+  email: string | null
+  /** "revoked": Google refused the saved access, so the person must reconnect. */
+  state: "active" | "revoked" | "error" | null
+  lastError: string | null
+  /** Last time anything synced for this person (ISO), or null. */
+  lastSyncAt: string | null
+}
+
+export type GoogleContainerKind = "tasklist" | "calendar"
+
+/** One of the person's Google task lists or calendars. */
+export type GoogleContainer = {
+  kind: GoogleContainerKind
+  id: string
+  title: string
+  /** Set for the "Taskly · <Workspace>" list/calendar Taskly manages (always synced). */
+  accountId: string | null
+  /** Personal containers: whether their items show in Taskly. */
+  selected: boolean
+  /** Google's colour for the calendar (hex), if any. */
+  color: string | null
+  /** The person's default task list / primary calendar. */
+  primary: boolean
+}
+
+/** One of the person's own Google Tasks. Only they see it in Taskly. */
+export type PersonalTask = {
+  id: string
+  tasklistId: string
+  tasklistTitle: string
+  title: string
+  notes: string
+  /** `YYYY-MM-DD` or "" (Google Tasks has no due time). */
+  dueDate: string
+  completed: boolean
+  completedAt: string | null
+  updatedAt: string
+  /** Opens the task in Google, when Google provides a link. */
+  webLink: string | null
+}
+
+export type PersonalTaskInput = {
+  title: string
+  notes: string
+  dueDate: string
+  completed: boolean
+}
+
+/** One occurrence of an event on the person's own Google calendars. */
+export type PersonalEvent = {
+  id: string
+  calendarId: string
+  calendarTitle: string
+  color: string | null
+  title: string
+  description: string
+  location: string
+  allDay: boolean
+  /** Timed: RFC 3339 instants. All-day: `YYYY-MM-DD`, with `end` exclusive (Google's convention). */
+  start: string
+  end: string
+  /** Part of a repeating series; edits from Taskly change this occurrence only. */
+  recurring: boolean
+  /** False when someone else organises it and guests can't modify it. */
+  editable: boolean
+  htmlLink: string | null
+}
+
+/** Times are wall-clock in `timeZone` (the browser's zone). */
+export type PersonalEventInput = {
+  title: string
+  description: string
+  location: string
+  date: string
+  /** `HH:MM`; ignored when `allDay`. */
+  startTime: string
+  endTime: string
+  allDay: boolean
+  timeZone: string
 }

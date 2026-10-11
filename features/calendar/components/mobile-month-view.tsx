@@ -2,31 +2,36 @@
 
 import { AgendaView } from "@/features/calendar/components/agenda-view"
 import { getMonthGridDays, toDateKey } from "@/features/calendar/lib/calendar-utils"
+import { spansOn, type EventSpan } from "@/features/google/personal-events"
 import { useLocale } from "@/lib/i18n/locale-provider"
 import type { Meeting, Task } from "@/lib/types"
 import { useNow } from "@/lib/use-now"
 import { cn } from "@/lib/utils"
 
 /**
- * Phone calendar: a compact month grid (dots mark meetings and due tasks) and
- * the selected day's items underneath.
+ * Phone calendar: a compact month grid (dots mark meetings, personal Google
+ * events and due tasks) and the selected day's items underneath.
  */
 export function MobileMonthView({
   month,
   selectedKey,
   meetings,
   tasks,
+  events = [],
   onSelect,
   onOpenMeeting,
   onOpenTask,
+  onOpenEvent,
 }: {
   month: Date
   selectedKey: string
   meetings: Meeting[]
   tasks: Task[]
+  events?: EventSpan[]
   onSelect: (dateKey: string) => void
   onOpenMeeting: (meeting: Meeting) => void
   onOpenTask: (task: Task) => void
+  onOpenEvent?: (span: EventSpan) => void
 }): React.ReactElement {
   const { intl } = useLocale()
   const todayKey = toDateKey(useNow())
@@ -51,6 +56,7 @@ export function MobileMonthView({
             const inMonth = day.getMonth() === month.getMonth()
             const hasMeeting = meetings.some((m) => m.date === key)
             const hasTask = tasks.some((task) => task.dueDate === key)
+            const hasEvent = spansOn(events, key).length > 0
             const isSelected = key === selectedKey
             const isToday = key === todayKey
             return (
@@ -79,6 +85,9 @@ export function MobileMonthView({
                 </span>
                 <span className="flex h-1.5 gap-1" aria-hidden="true">
                   {hasMeeting ? <span className="size-1.5 rounded-full bg-brand" /> : null}
+                  {hasEvent ? (
+                    <span className="size-1.5 rounded-full border border-foreground-secondary" />
+                  ) : null}
                   {hasTask ? <span className="size-1.5 rounded-full bg-foreground-muted" /> : null}
                 </span>
               </button>
@@ -91,8 +100,10 @@ export function MobileMonthView({
         days={[selected]}
         meetings={meetings}
         tasks={tasks}
+        events={events}
         onOpenMeeting={onOpenMeeting}
         onOpenTask={onOpenTask}
+        onOpenEvent={onOpenEvent}
       />
     </div>
   )

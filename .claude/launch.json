@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "taskly-dev",
+      "runtimeExecutable": "corepack",
+      "runtimeArgs": ["yarn", "dev"],
+      "port": 3100
+    }
+  ]
+}

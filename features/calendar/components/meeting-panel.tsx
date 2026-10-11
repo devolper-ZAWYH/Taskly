@@ -19,6 +19,7 @@ import {
   useMeeting,
   useMeetingTasks,
 } from "@/features/calendar/hooks/use-meetings"
+import { SyncedToGoogle } from "@/features/google/synced-marker"
 import { AssigneeStack } from "@/features/tasks/components/assignees"
 import { StatusBadge } from "@/features/tasks/components/task-badges"
 import { ConfirmDialog } from "@/components/shell/confirm-dialog"
@@ -133,6 +134,9 @@ function MeetingDetail({
             )}
           </SheetDescription>
         ) : null}
+        <SyncedToGoogle
+          involved={meeting.organizerId === me.id || meeting.attendeeIds.includes(me.id)}
+        />
       </SheetHeader>
 
       <SheetPanel>

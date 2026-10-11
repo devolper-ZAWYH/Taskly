@@ -69,13 +69,17 @@ export function shiftDate(view: CalendarView, date: Date, step: 1 | -1): Date {
   return view === "month" ? addMonths(date, step) : addDays(date, step * 7)
 }
 
-function minutes(hhmm: string): number {
+/** `HH:MM` → minutes since midnight. */
+export function toMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number)
   return h * 60 + m
 }
 
-export type MeetingLayout = {
-  meeting: Meeting
+/** Something with a start and end on one day, in minutes since midnight. */
+export type TimedSlot<T> = { item: T; start: number; end: number }
+
+export type TimedLayout<T> = {
+  item: T
   /** Percentages of the visible day column. */
   top: number
   height: number
@@ -83,19 +87,21 @@ export type MeetingLayout = {
   width: number
 }
 
-/** Position a day's meetings in the time grid; overlapping meetings share the width. */
-export function layoutMeetings(meetings: Meeting[], dayKey: string): MeetingLayout[] {
+/**
+ * Position a day's timed items (meetings and personal events) in the time
+ * grid; overlapping items share the width.
+ */
+export function layoutTimed<T>(slots: TimedSlot<T>[]): TimedLayout<T>[] {
   const gridStart = START_HOUR * 60
   const gridEnd = END_HOUR * 60
   const total = gridEnd - gridStart
 
-  const items = meetings
-    .filter((m) => m.date === dayKey)
-    .map((meeting) => ({
-      meeting,
-      start: Math.max(minutes(meeting.startTime), gridStart),
-      // Keep very short meetings clickable (min 20 minutes tall).
-      end: Math.min(Math.max(minutes(meeting.endTime), minutes(meeting.startTime) + 20), gridEnd),
+  const items = slots
+    .map((slot) => ({
+      item: slot.item,
+      start: Math.max(slot.start, gridStart),
+      // Keep very short items clickable (min 20 minutes tall).
+      end: Math.min(Math.max(slot.end, slot.start + 20), gridEnd),
     }))
     .filter((item) => item.end > gridStart && item.start < gridEnd)
     .sort((a, b) => a.start - b.start || b.end - a.end)
@@ -116,13 +122,18 @@ export function layoutMeetings(meetings: Meeting[], dayKey: string): MeetingLayo
     const overlapping = placed.filter((o) => o.start < item.end && o.end > item.start)
     const columnCount = Math.max(...overlapping.map((o) => o.column + 1), 1)
     return {
-      meeting: item.meeting,
+      item: item.item,
       top: ((item.start - gridStart) / total) * 100,
       height: ((item.end - item.start) / total) * 100,
       left: (item.column / columnCount) * 100,
       width: (1 / columnCount) * 100,
     }
   })
+}
+
+/** A meeting as a time-grid slot. */
+export function meetingSlot(meeting: Meeting): TimedSlot<Meeting> {
+  return { item: meeting, start: toMinutes(meeting.startTime), end: toMinutes(meeting.endTime) }
 }
 
 export function currentTimePercentage(now: Date): number | null {

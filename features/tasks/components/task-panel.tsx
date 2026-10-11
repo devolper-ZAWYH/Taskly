@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/sheet"
 import { toastManager } from "@/components/ui/toast"
 import { useMeeting } from "@/features/calendar/hooks/use-meetings"
+import { SyncedToGoogle } from "@/features/google/synced-marker"
 import { useViewer, useWorkspacePath } from "@/features/workspace/workspace-context"
 import { StatusBadge } from "@/features/tasks/components/task-badges"
 import { TaskFields } from "@/features/tasks/components/task-fields"
@@ -137,6 +138,10 @@ function TaskEditor({ task, onClose }: { task: Task; onClose: () => void }): Rea
         </SheetDescription>
         {/* Admins see (and change) the meeting in the form's chip instead. */}
         {task.meetingId && statusOnly ? <MeetingOrigin meetingId={task.meetingId} /> : null}
+        {/* Cancelled tasks are taken out of Google. */}
+        <SyncedToGoogle
+          involved={task.assigneeIds.includes(me.id) && task.status !== "cancelled"}
+        />
       </SheetHeader>
 
       <SheetPanel>
