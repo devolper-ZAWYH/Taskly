@@ -362,7 +362,7 @@ export async function attachUser(
     event: "workspace_added",
     accountId: account,
     data: { actor: operator.name, workspace: accountRow.name },
-    link: `/w/${account}/tasks`,
+    link: `/w/${account}/dashboard`,
   })
 }
 

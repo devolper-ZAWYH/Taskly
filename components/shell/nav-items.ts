@@ -2,6 +2,7 @@
 
 import {
   BellIcon,
+  LayoutDashboardIcon,
   Building2Icon,
   CalendarDaysIcon,
   LogOutIcon,
@@ -88,6 +89,12 @@ export function useNavGroups(): NavGroup[] {
     return [
       {
         items: [
+          link(
+            "dashboard",
+            t("nav.dashboard"),
+            LayoutDashboardIcon,
+            workspacePath(accountId, "/dashboard"),
+          ),
           link("tasks", t("nav.tasks"), SquareCheckBigIcon, workspacePath(accountId, "/tasks")),
           link(
             "calendar",

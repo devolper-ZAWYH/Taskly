@@ -12,7 +12,15 @@ import {
 import { cn } from "@/lib/utils"
 
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"))
-const MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"))
+/** Minute choices every `step` minutes (e.g. 15 → 00, 15, 30, 45). */
+function minuteOptions(step: number, current: string): string[] {
+  const options = Array.from({ length: Math.ceil(60 / step) }, (_, i) =>
+    String(i * step).padStart(2, "0"),
+  )
+  // Keep an existing off-step value (e.g. 14:20) selectable instead of losing it.
+  if (current && !options.includes(current)) options.push(current)
+  return options.sort()
+}
 
 function splitTime(value: string): { hour: string; minute: string } {
   const match = /^(\d{2}):(\d{2})$/.exec(value)
@@ -27,6 +35,8 @@ export type TimePickerProps = {
   disabled?: boolean
   className?: string
   "aria-label"?: string
+  /** Minute granularity; defaults to every minute. */
+  minuteStep?: number
 }
 
 export function TimePicker({
@@ -36,8 +46,10 @@ export function TimePicker({
   disabled = false,
   className,
   "aria-label": ariaLabel,
+  minuteStep = 1,
 }: TimePickerProps): React.ReactElement {
   const { hour, minute } = splitTime(value)
+  const minutes = minuteOptions(minuteStep, minute)
 
   function emit(nextHour: string, nextMinute: string) {
     if (!nextHour && !nextMinute) {
@@ -95,7 +107,7 @@ export function TimePicker({
           <SelectValue>{minute || "MM"}</SelectValue>
         </SelectTrigger>
         <SelectContent>
-          {MINUTES.map((entry) => (
+          {minutes.map((entry) => (
             <SelectItem key={entry} value={entry}>
               {entry}
             </SelectItem>

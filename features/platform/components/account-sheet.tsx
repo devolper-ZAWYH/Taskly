@@ -83,7 +83,7 @@ function AccountDetail({ account }: { account: AccountSummary }): React.ReactEle
         <SheetDescription className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <span>{t("platform.createdOn", { date: formatDateTime(account.createdAt) })}</span>
           <Link
-            href={workspacePath(account.id, "/tasks")}
+            href={workspacePath(account.id, "/dashboard")}
             className="inline-flex items-center gap-1 font-medium text-foreground underline underline-offset-2"
           >
             {t("platform.openWorkspace")}

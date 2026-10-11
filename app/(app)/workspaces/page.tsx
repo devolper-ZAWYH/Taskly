@@ -24,9 +24,9 @@ function WorkspacesPicker() {
     if (!auto || !workspaces) return null
     if (me.isOperator) return "/platform"
     const own = workspaces.filter((w) => !w.viaOperator && w.account.active)
-    if (own.length === 1) return workspacePath(own[0].account.id, "/tasks")
+    if (own.length === 1) return workspacePath(own[0].account.id, "/dashboard")
     const last = own.find((w) => w.account.id === getLastWorkspaceId(me.id))
-    return last ? workspacePath(last.account.id, "/tasks") : null
+    return last ? workspacePath(last.account.id, "/dashboard") : null
   }, [auto, workspaces, me.isOperator, me.id])
 
   React.useEffect(() => {
@@ -53,7 +53,7 @@ function WorkspacesPicker() {
           {workspaces.map((w) => (
             <li key={w.account.id}>
               <Link
-                href={workspacePath(w.account.id, "/tasks")}
+                href={workspacePath(w.account.id, "/dashboard")}
                 className={cn(
                   "group flex items-center justify-between gap-4 rounded-md border p-5 transition-colors hover:border-foreground",
                   !w.account.active && "opacity-60",

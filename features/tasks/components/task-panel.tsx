@@ -135,7 +135,8 @@ function TaskEditor({ task, onClose }: { task: Task; onClose: () => void }): Rea
             ? " · " + t("tasks.form.completedAt", { date: formatDateTime(task.completedAt) })
             : ""}
         </SheetDescription>
-        {task.meetingId ? <MeetingOrigin meetingId={task.meetingId} /> : null}
+        {/* Admins see (and change) the meeting in the form's chip instead. */}
+        {task.meetingId && statusOnly ? <MeetingOrigin meetingId={task.meetingId} /> : null}
       </SheetHeader>
 
       <SheetPanel>

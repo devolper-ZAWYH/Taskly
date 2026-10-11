@@ -148,7 +148,7 @@ export async function addMember(
     event: "workspace_added",
     accountId,
     data: { actor: actor.user.name, workspace: actor.account.name },
-    link: `/w/${accountId}/tasks`,
+    link: `/w/${accountId}/dashboard`,
   })
   return { member: (await findMember(ctx, accountId, userId))!, temporaryPassword }
 }

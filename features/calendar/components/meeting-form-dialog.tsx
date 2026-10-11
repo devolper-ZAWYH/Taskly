@@ -119,6 +119,7 @@ function MeetingForm({
                 className="shrink-0"
                 value={draft.startTime}
                 aria-label={t("meetings.form.start")}
+                minuteStep={15}
                 onChange={(v) => set("startTime", v)}
               />
             </FormRow>
@@ -127,6 +128,7 @@ function MeetingForm({
                 className="shrink-0"
                 value={draft.endTime}
                 aria-label={t("meetings.form.end")}
+                minuteStep={15}
                 onChange={(v) => set("endTime", v)}
               />
             </FormRow>

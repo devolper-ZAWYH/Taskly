@@ -75,7 +75,7 @@ export function WorkspaceSwitcher({
             {own.map((w) => (
               <MenuItem
                 key={w.account.id}
-                onClick={() => router.push(workspacePath(w.account.id, "/tasks"))}
+                onClick={() => router.push(workspacePath(w.account.id, "/dashboard"))}
               >
                 <CheckIcon className={cn(w.account.id === accountId ? "" : "invisible")} />
                 <span className="min-w-0 flex-1 truncate">{w.account.name}</span>
@@ -92,7 +92,7 @@ export function WorkspaceSwitcher({
               {others.map((w) => (
                 <MenuItem
                   key={w.account.id}
-                  onClick={() => router.push(workspacePath(w.account.id, "/tasks"))}
+                  onClick={() => router.push(workspacePath(w.account.id, "/dashboard"))}
                 >
                   <CheckIcon className={cn(w.account.id === accountId ? "" : "invisible")} />
                   <span className="min-w-0 flex-1 truncate">{w.account.name}</span>

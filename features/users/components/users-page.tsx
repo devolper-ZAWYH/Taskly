@@ -54,7 +54,7 @@ export function UsersPage(): React.ReactElement | null {
   const users = useUsers(debouncedSearch, page)
 
   React.useEffect(() => {
-    if (!isAdmin) router.replace(wsPath("/tasks"))
+    if (!isAdmin) router.replace(wsPath("/dashboard"))
   }, [isAdmin, router, wsPath])
   if (!isAdmin) return null
 

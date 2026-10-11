@@ -3,6 +3,7 @@
  * dispatches names listed here; each function does its own access checks.
  */
 import * as auth from "@/server/services/auth"
+import * as dashboard from "@/server/services/dashboard"
 import * as meetings from "@/server/services/meetings"
 import * as notifications from "@/server/services/notifications"
 import * as members from "@/server/services/members"
@@ -17,6 +18,8 @@ export const api = {
   changePassword: auth.changePassword,
   setMyAvatar: auth.setMyAvatar,
   listMyWorkspaces: auth.listMyWorkspaces,
+
+  getDashboard: dashboard.getDashboard,
 
   listTasks: tasks.listTasks,
   getTask: tasks.getTask,

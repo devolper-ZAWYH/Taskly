@@ -197,3 +197,28 @@ export type AppNotification = {
   read: boolean
   createdAt: string
 }
+
+/** Open work for one workspace member (administrators' dashboard). */
+export type PersonLoad = { user: WorkspaceMember; open: number; overdue: number }
+
+/** Everything the dashboard shows, in one request. `team` is for administrators. */
+export type Dashboard = {
+  /** The caller's local date the numbers were computed for (YYYY-MM-DD). */
+  today: string
+  mine: {
+    overdue: Task[]
+    dueToday: Task[]
+    upcoming: Task[]
+  }
+  /** Visible meetings from today through the next 7 days. */
+  meetings: Meeting[]
+  team: {
+    overdue: number
+    unassigned: number
+    dueThisWeek: number
+    completedThisWeek: number
+    createdThisWeek: number
+    people: PersonLoad[]
+    unassignedTasks: Task[]
+  } | null
+}
