@@ -5,8 +5,14 @@ import { PEOPLE_KEY } from "@/features/tasks/hooks/use-tasks"
 import { MY_WORKSPACES_KEY, useWorkspace } from "@/features/workspace/workspace-context"
 import {
   addMember,
+  answerInvitation,
+  cancelInvitation,
+  listInvitations,
   listMembers,
+  listMyInvitations,
   removeMember,
+  resendInvitation,
+  resendInvite,
   updateMember,
   type AddMemberInput,
   type UpdateMemberInput,
@@ -28,7 +34,7 @@ export function useInvalidateMembership() {
   const queryClient = useQueryClient()
   return () =>
     Promise.all(
-      [["members"], PEOPLE_KEY, ["me"], MY_WORKSPACES_KEY, ["platform"]].map((queryKey) =>
+      [["members"], ["invitations"], PEOPLE_KEY, ["me"], MY_WORKSPACES_KEY, ["platform"]].map((queryKey) =>
         queryClient.invalidateQueries({ queryKey }),
       ),
     )
@@ -58,6 +64,47 @@ export function useRemoveMember() {
   const invalidate = useInvalidateMembership()
   return useMutation({
     mutationFn: (userId: string) => removeMember(accountId, userId),
+    onSuccess: invalidate,
+  })
+}
+
+export function useResendInvite() {
+  const { accountId } = useWorkspace()
+  return useMutation({ mutationFn: (userId: string) => resendInvite(accountId, userId) })
+}
+
+/** This workspace's pending invitations (administrators). */
+export function useInvitations() {
+  const { accountId } = useWorkspace()
+  return useQuery({
+    queryKey: ["invitations", accountId],
+    queryFn: () => listInvitations(accountId),
+  })
+}
+
+export function useResendInvitation() {
+  const { accountId } = useWorkspace()
+  return useMutation({ mutationFn: (id: string) => resendInvitation(accountId, id) })
+}
+
+export function useCancelInvitation() {
+  const { accountId } = useWorkspace()
+  const invalidate = useInvalidateMembership()
+  return useMutation({
+    mutationFn: (id: string) => cancelInvitation(accountId, id),
+    onSuccess: invalidate,
+  })
+}
+
+/** Invitations waiting for me (the workspaces page). Usable outside a workspace. */
+export function useMyInvitations() {
+  return useQuery({ queryKey: ["invitations", "mine"], queryFn: listMyInvitations })
+}
+
+export function useAnswerInvitation() {
+  const invalidate = useInvalidateMembership()
+  return useMutation({
+    mutationFn: ({ id, accept }: { id: string; accept: boolean }) => answerInvitation(id, accept),
     onSuccess: invalidate,
   })
 }

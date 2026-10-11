@@ -1,8 +1,9 @@
 # Plan: Two-way Google Calendar + Google Tasks sync
 
-Status: **implemented** (2026-10-11) on top of commit `85b2280`. Section 11
-lists where the build differs from this plan and which defaults were chosen
-for the open decisions. Agenda translation is a separate plan:
+Status: **implemented** (2026-10-11) on top of commit `85b2280`. Phase 6
+hardening, the workspace time zone and the permission tests were added the
+same day. Section 11 lists where the build differs from this plan and which
+defaults were chosen for the open decisions. Agenda translation is a separate plan:
 [plan-agenda-translation.md](plan-agenda-translation.md).
 
 ## 1. What this does
@@ -185,7 +186,7 @@ Inbound changes are applied **as that person** through the same rules as the app
 | Tick or untick a task                    | ✓ applied                               | ✓ applied (members may change status)               |
 | Task title, notes or due date            | ✓ applied                               | ✗ reverted, with a notice in the bell               |
 | Meeting title, time, location or agenda  | ✓ applied                               | ✗ reverted, with a notice                           |
-| New task in `Taskly · <Workspace>`       | ✓ becomes a new task, assigned to them  | Moved to their personal list, with a notice         |
+| New task in `Taskly · <Workspace>`       | ✓ becomes their own private task (§11)  | ✓ becomes their own private task (§11)              |
 | New event in `Taskly · <Workspace>`      | ✓ becomes a new meeting they organise   | Moved to their primary calendar, with a notice      |
 | Delete a task or event copy              | See decision §10.2                      | Recreated, with a notice                            |
 
@@ -238,16 +239,13 @@ push whose payload equals the base is skipped too.
 
 | Name                   | Kind   | Purpose                                              |
 | ---------------------- | ------ | ---------------------------------------------------- |
-| `GOOGLE_CLIENT_ID`     | secret | OAuth web client                                     |
-| `GOOGLE_CLIENT_SECRET` | secret | OAuth web client                                     |
-| `GOOGLE_TOKEN_KEY`     | secret | AES-GCM 256 key that encrypts refresh tokens at rest |
-| `APP_ORIGIN`           | var    | Public URL: footer links, and the push webhook (https only) |
+| Google Client ID / secret | Platform → Settings (or `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`) | OAuth web client |
+| `ENCRYPTION_KEY`       | secret | AES-GCM 256 key that encrypts refresh tokens (and console secrets) at rest; was `GOOGLE_TOKEN_KEY` |
+| App address            | Platform → Settings (or `APP_ORIGIN`) | Public URL: footer links, and the push webhook (https only) |
 | `GOOGLE_API_ORIGIN`, `GOOGLE_OAUTH_ORIGIN` | dev only | Point at `scripts/google-mock.mjs` for local testing |
 
-Redirect URIs are `http://localhost:3100/api/google/callback` and
-`https://zawyh.thouseefhamza-codes.workers.dev/api/google/callback`. Put the
-secrets in `.dev.vars` locally, and run `yarn cf-typegen` after editing
-`wrangler.jsonc`.
+Redirect URIs are `<app address>/api/google/callback`; Platform → Settings
+shows the exact one. Locally the values can live in `.dev.vars`.
 
 ### 6.2 Schema: `migrations/0007_google_sync.sql`
 
@@ -348,7 +346,7 @@ Neither plan needs the other to ship first.
 | 3  | Workspace meetings, both ways         | Per-workspace calendars, `accounts.timezone`, push, webhook + `syncToken`, merge, reverts, create/move rules    | 1          |
 | 4  | Personal Google Tasks in Taskly       | Container picker, cache + polling, Personal tab with create, edit, complete and delete, dashboard               | 1          |
 | 5  | Personal Google Calendar in Taskly    | Read-through cache + webhook invalidation, calendar rendering, create/edit/delete, "Where" select               | 1          |
-| 6  | Hardening and launch                  | Publish the OAuth app and pass verification, quota and adaptive polling, alerts on failed jobs, reconnect flow  | all        |
+| 6  | Hardening and launch                  | Publish the OAuth app and pass verification, quota and adaptive polling, alerts on failed jobs, reconnect flow. Code done (§11); publishing and verification are manual steps in Google Cloud | all        |
 
 Phases 2–5 only depend on phase 1 and can be built in any order. Phase 2 has the most
 value per effort.
@@ -421,7 +419,12 @@ value per effort.
 **Defaults chosen for §10** (the user didn't pick):
 
 1. **Time zone:** `accounts.timezone` is used if set. Otherwise the meeting's
-   organiser's zone, then UTC. There's no UI yet to set a workspace zone.
+   organiser's zone, then UTC. Operators set it in Platform → Accounts.
+   Changing it queues a sync of every linked meeting, so the Google copies
+   keep their wall-clock times in the new zone. Each link stores the zone its
+   copy was written in (`0008_google_link_zone.sql`), and inbound sync reads
+   the copy in that zone. A zone change (including an organiser's browser zone
+   changing) therefore never looks like someone moved the event in Google.
 2. **Deleting a copy in Google:** if an administrator deletes a task they
    created, or a meeting they organise, it is deleted in Taskly. Any other
    delete is recreated, with a notice.
@@ -432,8 +435,42 @@ value per effort.
 5. **On disconnect:** the "Taskly · …" lists and calendars are deleted from
    Google. Personal items are untouched.
 
+**Hardening (phase 6):**
+
+- **Failed jobs:** when a job stops retrying, every operator gets a
+  `google_sync_failed` notification (at most one an hour, under their "Google
+  sync" preference). It links to **Platform → Google sync**
+  (`server/google/health.ts`), which shows counts, failing work with its last
+  error, and people who must reconnect, plus a **Retry failed** button.
+  The **Sync now** button (not the pull when the app opens) also retries the
+  person's own stopped jobs, and Settings says when some of their changes
+  couldn't reach Google.
+- **Quota and polling:** 429/5xx and rate-limit 403s are retried. Workspace
+  lists are polled every 5 minutes for people active in the last day, and
+  every 30 minutes otherwise. Calendars with a live push channel get a safety
+  pull every 6 hours.
+- **Reconnect:** `invalid_grant` marks the connection revoked and notifies the
+  person. Settings offers **Reconnect**.
+- **Still manual:** publish the OAuth consent screen and pass Google's
+  verification for the Calendar and Tasks scopes (README, Google setup step 4).
+
+**Private tasks** (`0009_private_tasks.sql`, added 2026-10-12):
+
+- Anyone can create a task only they can see. Its creator is its only
+  assignee, and they can change every field from Taskly or Google.
+- A private task is copied to Google only while its **Sync to Google Tasks**
+  switch is on. Turning the switch off removes the copy.
+- A task anyone adds to their `Taskly · <Workspace>` list becomes their
+  private task (synced). This replaces the §5.3 row where an administrator's
+  became a workspace task and a member's was moved.
+- Deleting the copy of your own private task in Google deletes it in Taskly.
+- The Tasks page's old **Personal** tab (Google Tasks) is now a section under
+  **Mine**.
+
 **Testing:**
 
-- `yarn test` runs the unit tests for mapping and merge.
+- `yarn test` runs the unit tests for mapping, merge, and the §5.3
+  permission matrix (`policy.test.ts`, one test per row for an administrator
+  and a member).
 - `scripts/google-mock.mjs` is an in-memory Google (OAuth, Tasks, Calendar)
   for local end-to-end runs without a Google Cloud project.

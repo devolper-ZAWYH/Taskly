@@ -4,11 +4,14 @@
  */
 import * as auth from "@/server/services/auth"
 import * as dashboard from "@/server/services/dashboard"
+import * as emails from "@/server/services/emails"
 import * as google from "@/server/services/google"
 import * as meetings from "@/server/services/meetings"
 import * as notifications from "@/server/services/notifications"
+import * as passwordLinks from "@/server/services/password-links"
 import * as members from "@/server/services/members"
 import * as platform from "@/server/services/platform"
+import * as settings from "@/server/services/settings"
 import * as tasks from "@/server/services/tasks"
 
 export const api = {
@@ -18,6 +21,13 @@ export const api = {
   updateMe: auth.updateMe,
   changePassword: auth.changePassword,
   setMyAvatar: auth.setMyAvatar,
+  listMyEmails: emails.listMyEmails,
+  addMyEmail: emails.addMyEmail,
+  resendEmailConfirmation: emails.resendEmailConfirmation,
+  confirmEmail: emails.confirmEmail,
+  removeMyEmail: emails.removeMyEmail,
+  makeEmailPrimary: emails.makeEmailPrimary,
+  setWorkspaceEmail: emails.setWorkspaceEmail,
   listMyWorkspaces: auth.listMyWorkspaces,
 
   getDashboard: dashboard.getDashboard,
@@ -43,6 +53,18 @@ export const api = {
   addMember: members.addMember,
   updateMember: members.updateMember,
   removeMember: members.removeMember,
+  resendInvite: members.resendInvite,
+  listInvitations: members.listInvitations,
+  resendInvitation: members.resendInvitation,
+  cancelInvitation: members.cancelInvitation,
+  listMyInvitations: members.listMyInvitations,
+  answerInvitation: members.answerInvitation,
+
+  getInvite: passwordLinks.getInvite,
+  acceptInvite: passwordLinks.acceptInvite,
+  requestPasswordReset: passwordLinks.requestPasswordReset,
+  getPasswordReset: passwordLinks.getPasswordReset,
+  resetPassword: passwordLinks.resetPassword,
 
   listNotifications: notifications.listNotifications,
   unreadNotificationCount: notifications.unreadNotificationCount,
@@ -51,6 +73,7 @@ export const api = {
   getNotificationPrefs: notifications.getNotificationPrefs,
   setNotificationPref: notifications.setNotificationPref,
   getPushPublicKey: notifications.getPushPublicKey,
+  getEmailAvailable: notifications.getEmailAvailable,
   savePushSubscription: notifications.savePushSubscription,
   removePushSubscription: notifications.removePushSubscription,
 
@@ -67,6 +90,8 @@ export const api = {
   createPersonalEvent: google.createPersonalEvent,
   updatePersonalEvent: google.updatePersonalEvent,
   deletePersonalEvent: google.deletePersonalEvent,
+  getGoogleSyncHealth: google.getGoogleSyncHealth,
+  retryFailedGoogleJobs: google.retryFailedGoogleJobs,
 
   listAccounts: platform.listAccounts,
   getAccount: platform.getAccount,
@@ -76,12 +101,19 @@ export const api = {
   listAccountMembers: platform.listAccountMembers,
   listAllUsers: platform.listAllUsers,
   createUser: platform.createUser,
+  resendUserInvite: platform.resendUserInvite,
   updateUser: platform.updateUser,
   setUserPassword: platform.setUserPassword,
   deleteUser: platform.deleteUser,
   attachUser: platform.attachUser,
   setMembershipRole: platform.setMembershipRole,
   detachUser: platform.detachUser,
+
+  getPlatformSettings: settings.getPlatformSettings,
+  savePlatformSettings: settings.savePlatformSettings,
+  resetPlatformSettings: settings.resetPlatformSettings,
+  sendTestEmail: settings.sendTestEmail,
+  generatePushKeys: settings.generatePushKeys,
 }
 
 export type Api = typeof api

@@ -1,21 +1,40 @@
 # Copy to .dev.vars for local development (wrangler and `next dev` read it).
-# In production set each one with `wrangler secret put <NAME>`.
 NEXTJS_ENV=development
 
-# Where this copy of the app runs (links in Google items; webhooks need https).
+# The one secret every deployment sets (`wrangler secret put ENCRYPTION_KEY`):
+# encrypts Google tokens and the secrets saved in Platform → Settings.
+# 32 random bytes, base64. Set it once and never change it.
+#   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+ENCRYPTION_KEY=
+
+# Everything below is optional: operators set it in Platform → Settings, which
+# overrides these per group. Values here are a fallback (handy locally).
+
+# The app's public address (links in emails and Google items; webhooks need https).
 APP_ORIGIN=http://localhost:3100
 
-# Web push. Leave empty to turn push off locally.
+# Web push key pair (Platform → Settings can generate one).
+VAPID_PUBLIC_KEY=
 VAPID_PRIVATE_KEY=
 
 # Google sync (docs/plan-google-sync.md): an OAuth client of type "Web application"
 # with redirect URI http://localhost:3100/api/google/callback (and the live one).
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
-# Encrypts stored Google tokens. 32 random bytes, base64:
-#   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-GOOGLE_TOKEN_KEY=
 
-# Testing only: send Google API / OAuth calls to a mock server (scripts/google-mock.mjs).
+# Email through the cPanel mailbox: implicit TLS on port 465 (the app won't
+# send a password to a remote server without TLS).
+#   SMTP_HOST=mail.zawyh.com  SMTP_PORT=465  SMTP_USER=noreply@zawyh.com
+#   SMTP_PASS=<mailbox password>  MAIL_FROM=Taskly <noreply@zawyh.com>
+SMTP_HOST=
+SMTP_PORT=
+SMTP_SECURE=
+SMTP_USER=
+SMTP_PASS=
+MAIL_FROM=
+
+# Testing only: mock servers instead of Google (scripts/google-mock.mjs) and
+# instead of the mail server (scripts/smtp-mock.mjs: SMTP_HOST=localhost,
+# SMTP_PORT=2525, SMTP_SECURE=false).
 GOOGLE_API_ORIGIN=
 GOOGLE_OAUTH_ORIGIN=

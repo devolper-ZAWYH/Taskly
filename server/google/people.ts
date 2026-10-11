@@ -7,7 +7,7 @@ import ar from "@/messages/ar"
 import en from "@/messages/en"
 import type { Ctx } from "@/server/context"
 import { all, first } from "@/server/db"
-import { appUrl } from "@/server/google/config"
+import { appUrl } from "@/server/settings"
 import { notify, type NotificationEvent } from "@/server/services/notifications"
 
 const DICTIONARIES = { en, ar }
@@ -88,7 +88,7 @@ export async function taskFooter(ctx: Ctx, task: Task, userId: string): Promise<
   const assignees = await namesOf(ctx, task.assigneeIds)
   if (assignees.length > 0) lines.push(fill(f.assignees, { names: assignees.join(", ") }))
   lines.push(
-    fill(f.open, { url: appUrl(ctx.env, `/w/${task.accountId}/tasks?task=T-${task.number}`) }),
+    fill(f.open, { url: await appUrl(ctx, `/w/${task.accountId}/tasks?task=${task.id}`) }),
   )
   return lines
 }
@@ -102,7 +102,7 @@ export async function meetingFooter(ctx: Ctx, meeting: Meeting, userId: string):
   if (organizer) lines.push(fill(f.organizer, { name: organizer }))
   if (attendees.length > 0) lines.push(fill(f.attendees, { names: attendees.join(", ") }))
   const path = `/w/${meeting.accountId}/calendar?view=week&date=${meeting.date}&meeting=${meeting.id}`
-  lines.push(fill(f.open, { url: appUrl(ctx.env, path) }))
+  lines.push(fill(f.open, { url: await appUrl(ctx, path) }))
   return lines
 }
 
@@ -116,7 +116,7 @@ export async function noticeTo(
   ctx: Ctx,
   userId: string,
   event: NotificationEvent,
-  details: { accountId: string; title: string; ref?: string; link?: string | null },
+  details: { accountId: string; title: string; link?: string | null },
 ): Promise<void> {
   await notify(ctx, {
     recipients: [userId],
@@ -127,7 +127,6 @@ export async function noticeTo(
       actor: "",
       workspace: await workspaceName(ctx, details.accountId),
       title: details.title,
-      ref: details.ref,
     },
     link: details.link ?? null,
   })

@@ -10,6 +10,7 @@ import { GoogleError, googleFor } from "@/server/google/client"
 import { containerGone } from "@/server/google/containers"
 import type { GoogleEvent, GoogleTask } from "@/server/google/mapping"
 import { queueGoogleSync } from "@/server/google/queue"
+import { taskSyncs } from "@/server/google/policy"
 import { linkByGoogleId, touchSynced, type ContainerRow } from "@/server/google/store"
 import { importEvent, syncMeetingCopy } from "@/server/google/sync-meetings"
 import { importTask, syncTaskCopy } from "@/server/google/sync-tasks"
@@ -72,7 +73,7 @@ async function pullTask(ctx: Ctx, container: ContainerRow, item: GoogleTask): Pr
     return
   }
   const task = await findTask(ctx, link.account_id, link.entity_id)
-  if (!task || task.status === "cancelled" || !task.assigneeIds.includes(userId)) {
+  if (!task || !taskSyncs(task) || !task.assigneeIds.includes(userId)) {
     // Taskly no longer wants this copy; the task's sync removes it.
     await queueGoogleSync(ctx, "task", link.account_id, link.entity_id, { drain: false })
     return

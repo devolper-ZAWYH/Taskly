@@ -21,7 +21,6 @@ import {
   useGoogleToday,
 } from "@/features/google/dashboard-google"
 import { StatusBadge } from "@/features/tasks/components/task-badges"
-import { formatTaskRef } from "@/features/tasks/lib/task-meta"
 import { useWorkspace, useWorkspacePath } from "@/features/workspace/workspace-context"
 import { getDashboard } from "@/lib/api/dashboard"
 import { useLocale } from "@/lib/i18n/locale-provider"
@@ -267,13 +266,10 @@ function TaskList({ tasks, today, empty }: { tasks: Task[]; today: string; empty
         return (
           <li key={task.id} className="border-b last:border-b-0">
             <Link
-              href={wsPath(`/tasks?task=${formatTaskRef(task.number)}`)}
+              href={wsPath(`/tasks?task=${task.id}`)}
               className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-surface-hover"
               data-testid="dashboard-task"
             >
-              <span className="w-11 shrink-0 font-mono text-xs text-foreground-muted">
-                {formatTaskRef(task.number)}
-              </span>
               <span className="min-w-0 flex-1 truncate text-sm">{task.title}</span>
               <span
                 className={cn(

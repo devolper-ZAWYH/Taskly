@@ -2,7 +2,7 @@
  * Google OAuth 2.0 for a web server app: authorization code + PKCE, offline
  * access (a refresh token), and revocation on disconnect.
  */
-import { oauthEndpoints, SCOPES } from "@/server/google/config"
+import { oauthEndpoints, SCOPES, type GoogleClient } from "@/server/google/config"
 
 export type TokenResponse = {
   access_token: string
@@ -22,11 +22,12 @@ export class OAuthGrantError extends Error {
 
 export function consentUrl(
   env: CloudflareEnv,
+  client: GoogleClient,
   params: { redirectUri: string; state: string; challenge: string; loginHint?: string },
 ): string {
   const url = new URL(oauthEndpoints(env).auth)
   url.search = new URLSearchParams({
-    client_id: env.GOOGLE_CLIENT_ID,
+    client_id: client.clientId,
     redirect_uri: params.redirectUri,
     response_type: "code",
     scope: SCOPES.join(" "),
@@ -42,13 +43,17 @@ export function consentUrl(
   return url.toString()
 }
 
-async function tokenRequest(env: CloudflareEnv, body: Record<string, string>): Promise<TokenResponse> {
+async function tokenRequest(
+  env: CloudflareEnv,
+  client: GoogleClient,
+  body: Record<string, string>,
+): Promise<TokenResponse> {
   const response = await fetch(oauthEndpoints(env).token, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_id: env.GOOGLE_CLIENT_ID,
-      client_secret: env.GOOGLE_CLIENT_SECRET,
+      client_id: client.clientId,
+      client_secret: client.clientSecret,
       ...body,
     }),
   })
@@ -66,11 +71,12 @@ async function tokenRequest(env: CloudflareEnv, body: Record<string, string>): P
 
 export function exchangeCode(
   env: CloudflareEnv,
+  client: GoogleClient,
   code: string,
   redirectUri: string,
   verifier: string,
 ): Promise<TokenResponse> {
-  return tokenRequest(env, {
+  return tokenRequest(env, client, {
     grant_type: "authorization_code",
     code,
     redirect_uri: redirectUri,
@@ -78,8 +84,12 @@ export function exchangeCode(
   })
 }
 
-export function refreshAccessToken(env: CloudflareEnv, refreshToken: string): Promise<TokenResponse> {
-  return tokenRequest(env, { grant_type: "refresh_token", refresh_token: refreshToken })
+export function refreshAccessToken(
+  env: CloudflareEnv,
+  client: GoogleClient,
+  refreshToken: string,
+): Promise<TokenResponse> {
+  return tokenRequest(env, client, { grant_type: "refresh_token", refresh_token: refreshToken })
 }
 
 /** Best effort: a token Google already dropped is fine. */

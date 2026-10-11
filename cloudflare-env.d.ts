@@ -4,16 +4,22 @@
 interface __BaseEnv_CloudflareEnv {
 	DB: D1Database;
 	ASSETS: Fetcher;
-	VAPID_PUBLIC_KEY: "BKbT1ysPn04TCWsJHyp22OeMJk_ZWHG52FEYafDGdcsovkHOIQgclSeDYMne64LZJ_S4neBAG2Y-OfGLHKnGviQ";
-	VAPID_SUBJECT: "https://zawyh.thouseefhamza-codes.workers.dev";
+	VAPID_PUBLIC_KEY: string;
+	VAPID_SUBJECT: string;
 	NEXTJS_ENV: string;
 	APP_ORIGIN: string;
 	VAPID_PRIVATE_KEY: string;
 	GOOGLE_CLIENT_ID: string;
 	GOOGLE_CLIENT_SECRET: string;
-	GOOGLE_TOKEN_KEY: string;
+	ENCRYPTION_KEY: string;
 	GOOGLE_API_ORIGIN: string;
 	GOOGLE_OAUTH_ORIGIN: string;
+	SMTP_HOST: string;
+	SMTP_PORT: string;
+	SMTP_SECURE: string;
+	SMTP_USER: string;
+	SMTP_PASS: string;
+	MAIL_FROM: string;
 	WORKER_SELF_REFERENCE: Service<typeof import("./custom-worker").default>;
 }
 declare namespace Cloudflare {
@@ -27,7 +33,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "VAPID_PUBLIC_KEY" | "VAPID_SUBJECT" | "NEXTJS_ENV" | "APP_ORIGIN" | "VAPID_PRIVATE_KEY" | "GOOGLE_CLIENT_ID" | "GOOGLE_CLIENT_SECRET" | "GOOGLE_TOKEN_KEY" | "GOOGLE_API_ORIGIN" | "GOOGLE_OAUTH_ORIGIN">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "VAPID_PUBLIC_KEY" | "VAPID_SUBJECT" | "NEXTJS_ENV" | "APP_ORIGIN" | "VAPID_PRIVATE_KEY" | "GOOGLE_CLIENT_ID" | "GOOGLE_CLIENT_SECRET" | "ENCRYPTION_KEY" | "GOOGLE_API_ORIGIN" | "GOOGLE_OAUTH_ORIGIN" | "SMTP_HOST" | "SMTP_PORT" | "SMTP_SECURE" | "SMTP_USER" | "SMTP_PASS" | "MAIL_FROM">> {}
 }
 
 // Begin runtime types

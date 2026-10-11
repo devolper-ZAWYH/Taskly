@@ -7,10 +7,11 @@
 import { AppError } from "@/lib/api/core"
 import type { Ctx } from "@/server/context"
 import { nowIso, run } from "@/server/db"
-import { apiOrigin } from "@/server/google/config"
+import { apiOrigin, googleClient, type GoogleClient } from "@/server/google/config"
 import { OAuthGrantError, refreshAccessToken } from "@/server/google/oauth"
 import { getConnection, type ConnectionRow } from "@/server/google/store"
 import { decryptToken, encryptToken } from "@/server/google/tokens"
+import { encryptionKey } from "@/server/settings"
 import { notify } from "@/server/services/notifications"
 
 export class GoogleError extends Error {
@@ -68,7 +69,11 @@ async function createClient(ctx: Ctx, userId: string): Promise<Google> {
   const connection = await getConnection(ctx.db, userId)
   if (!connection) throw new AppError("googleNotConnected")
   if (connection.state === "revoked") throw new AppError("googleReconnect")
-  const secret = ctx.env.GOOGLE_TOKEN_KEY
+  const configured = await googleClient(ctx)
+  const key = encryptionKey(ctx.env)
+  if (!configured || !key) throw new AppError("googleNotConfigured")
+  const client: GoogleClient = configured
+  const secret: string = key
 
   let cached: string | null = null
   const soon = () => new Date(Date.now() + 60_000).toISOString()
@@ -85,7 +90,7 @@ async function createClient(ctx: Ctx, userId: string): Promise<Google> {
     }
     try {
       const refreshToken = await decryptToken(secret, connection!.refresh_token_enc)
-      const fresh = await refreshAccessToken(ctx.env, refreshToken)
+      const fresh = await refreshAccessToken(ctx.env, client, refreshToken)
       const expires = new Date(Date.now() + fresh.expires_in * 1000).toISOString()
       const encrypted = await encryptToken(secret, fresh.access_token)
       await run(

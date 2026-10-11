@@ -12,16 +12,24 @@ import { hashPassword, hashToken, verifyPassword } from "@/server/crypto"
 import {
   all,
   avatarUrl,
-  first,
   nowIso,
   run,
   toAccount,
   toUser,
   type AccountRow,
-  type UserRow,
 } from "@/server/db"
+import { userByEmail } from "@/server/emails"
 import { decodeBase64, looksLikeImage } from "@/server/images"
-import { isObject, LOCALES, normalizeEmail, oneOf, optStr, password, str } from "@/server/validate"
+import {
+  isObject,
+  LOCALES,
+  normalizeEmail,
+  oneOf,
+  optStr,
+  password,
+  str,
+  timeZone as validTimeZone,
+} from "@/server/validate"
 
 const toPublic = ({ passwordHash: _hash, ...user }: PublicUser & { passwordHash: string }) => {
   void _hash
@@ -34,7 +42,8 @@ const DUMMY_HASH =
 
 export async function login(ctx: Ctx, email: unknown, pass: unknown): Promise<PublicUser> {
   const normalized = normalizeEmail(str(email, 254))
-  const row = await first<UserRow>(ctx.db, "SELECT * FROM users WHERE email = ?", normalized)
+  // Any of their confirmed addresses signs them in.
+  const row = await userByEmail(ctx.db, normalized)
   const ok = await verifyPassword(str(pass, 200), row?.password_hash ?? DUMMY_HASH)
   if (!row || !ok) throw new AppError("invalidCredentials")
   const user = toUser(row)
@@ -54,16 +63,6 @@ export async function getMe(ctx: Ctx): Promise<PublicUser | null> {
   return user ? toPublic(user) : null
 }
 
-/** An IANA zone the runtime knows (e.g. "Asia/Qatar"), or a bad request. */
-function validTimeZone(zone: string): string {
-  try {
-    new Intl.DateTimeFormat("en", { timeZone: zone })
-    return zone
-  } catch {
-    throw new AppError("badRequest")
-  }
-}
-
 export async function updateMe(ctx: Ctx, input: unknown): Promise<PublicUser> {
   const me = await requireUser(ctx)
   const v = (input ?? {}) as Record<string, unknown>
@@ -71,7 +70,7 @@ export async function updateMe(ctx: Ctx, input: unknown): Promise<PublicUser> {
   const name = rawName?.trim()
   if (rawName !== undefined && !name) throw new AppError("nameRequired")
   const locale = v.locale === undefined ? undefined : oneOf(v.locale, LOCALES)
-  const timeZone = v.timeZone === undefined ? undefined : validTimeZone(str(v.timeZone, 64))
+  const timeZone = v.timeZone === undefined ? undefined : validTimeZone(v.timeZone)
   const calendarView =
     v.calendarView === undefined ? undefined : oneOf(v.calendarView, CALENDAR_PREFERENCES)
   await run(

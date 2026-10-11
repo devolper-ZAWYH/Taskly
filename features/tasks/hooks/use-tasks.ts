@@ -20,7 +20,7 @@ export const taskKeys = {
   workspace: (accountId: string) => ["tasks", accountId] as const,
   list: (accountId: string, scope: TaskScope, search: string, page: number, filters: TaskFilters) =>
     ["tasks", accountId, "list", scope, search, page, filters] as const,
-  detail: (accountId: string, ref: string) => ["tasks", accountId, "detail", ref] as const,
+  detail: (accountId: string, id: string) => ["tasks", accountId, "detail", id] as const,
 }
 
 export const PEOPLE_KEY = ["people"] as const
@@ -37,12 +37,12 @@ export function useTasks(scope: TaskScope, search: string, page: number, filters
   })
 }
 
-export function useTask(ref: string | null) {
+export function useTask(id: string | null) {
   const { accountId } = useWorkspace()
   return useQuery({
-    queryKey: taskKeys.detail(accountId, ref ?? ""),
-    queryFn: () => getTask(accountId, ref!),
-    enabled: Boolean(ref),
+    queryKey: taskKeys.detail(accountId, id ?? ""),
+    queryFn: () => getTask(accountId, id!),
+    enabled: Boolean(id),
   })
 }
 

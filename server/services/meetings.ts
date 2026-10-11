@@ -16,7 +16,7 @@ import {
   type TaskRow,
 } from "@/server/db"
 import { notify } from "@/server/services/notifications"
-import { assertAssignees } from "@/server/services/tasks"
+import { assertAssignees, visibleTasks } from "@/server/services/tasks"
 import { date, isObject, meetingInput, str, time } from "@/server/validate"
 
 /** Admins see everything; others see meetings they organize or attend. */
@@ -88,18 +88,17 @@ export async function listMeetingTasks(
   meetingId: unknown,
 ): Promise<Task[]> {
   const { actor, meeting } = await findVisible(ctx, accountId, meetingId)
-  // Members only see the action items assigned to them, and never cancelled ones.
+  // Members only see the action items assigned to them, and never cancelled
+  // ones; private tasks only show to their owner.
+  const visible = visibleTasks(actor)
   const rows = await all<TaskRow>(
     ctx.db,
     `SELECT ${TASK_COLUMNS} FROM tasks t
-     WHERE t.meeting_id = ? AND t.account_id = ?
-       AND (? OR (t.status != 'cancelled' AND EXISTS (
-         SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = ?)))
-     ORDER BY t.number`,
+     WHERE t.meeting_id = ? AND t.account_id = ? AND ${visible.sql}
+     ORDER BY t.created_at`,
     meeting.id,
     accountId,
-    actor.role === "administrator" ? 1 : 0,
-    actor.id,
+    ...visible.binds,
   )
   return rows.map(toTask)
 }

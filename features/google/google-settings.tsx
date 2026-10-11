@@ -176,6 +176,11 @@ function Connected({ status }: { status: GoogleStatus }): React.ReactElement {
                 ? t("google.settings.lastSync", { date: formatDateTime(status.lastSyncAt) })
                 : t("google.settings.neverSynced")}
             </p>
+            {status.failedJobs > 0 ? (
+              <p className="mt-1 text-xs text-destructive" data-testid="google-failed-jobs">
+                {t("google.settings.failedJobs")}
+              </p>
+            ) : null}
           </div>
         </div>
         {usable ? (
@@ -184,7 +189,7 @@ function Connected({ status }: { status: GoogleStatus }): React.ReactElement {
             variant="outline"
             loading={sync.isPending}
             onClick={() =>
-              sync.mutate(undefined, {
+              sync.mutate(true, {
                 onSuccess: () =>
                   toastManager.add({ type: "success", title: t("google.settings.synced") }),
                 onError: (error) => toastManager.add({ type: "error", title: errorMessage(error) }),

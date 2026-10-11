@@ -26,7 +26,6 @@ import { ConfirmDialog } from "@/components/shell/confirm-dialog"
 import { TaskCreateDialog } from "@/features/tasks/components/task-create-dialog"
 import { usePeople } from "@/features/tasks/hooks/use-tasks"
 import { useViewer } from "@/features/workspace/workspace-context"
-import { formatTaskRef } from "@/features/tasks/lib/task-meta"
 import { canEditMeeting } from "@/lib/api/meetings"
 import { useLocale } from "@/lib/i18n/locale-provider"
 import type { Meeting, Task } from "@/lib/types"
@@ -209,9 +208,6 @@ function MeetingDetail({
                       onClick={() => onOpenTask(task)}
                       className="flex w-full cursor-pointer items-center gap-3 px-1 py-2.5 text-start transition-colors hover:bg-surface-muted"
                     >
-                      <span className="w-10 shrink-0 font-mono text-xs text-foreground-muted">
-                        {formatTaskRef(task.number)}
-                      </span>
                       <span
                         dir="auto"
                         className="min-w-0 flex-1 truncate text-start text-sm font-medium"

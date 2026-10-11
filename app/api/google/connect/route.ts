@@ -1,7 +1,7 @@
 import { cookies } from "next/headers"
 import { currentUser } from "@/server/context"
 import { newSessionToken } from "@/server/crypto"
-import { googleConfigured, OAUTH_COOKIE } from "@/server/google/config"
+import { googleClient, OAUTH_COOKIE } from "@/server/google/config"
 import { consentUrl } from "@/server/google/oauth"
 import { getConnection } from "@/server/google/store"
 import { pkcePair } from "@/server/google/tokens"
@@ -18,7 +18,8 @@ export async function GET(request: Request) {
   const ctx = await requestContext(request)
   const me = await currentUser(ctx)
   if (!me) return redirect(`${origin}/login`)
-  if (!googleConfigured(ctx.env)) return redirect(`${origin}/settings?google=error&reason=unconfigured`)
+  const client = await googleClient(ctx)
+  if (!client) return redirect(`${origin}/settings?google=error&reason=unconfigured`)
 
   const state = newSessionToken()
   const { verifier, challenge } = await pkcePair()
@@ -33,7 +34,7 @@ export async function GET(request: Request) {
   // Reconnecting: suggest the account they used before.
   const previous = await getConnection(ctx.db, me.id)
   return redirect(
-    consentUrl(ctx.env, {
+    consentUrl(ctx.env, client, {
       redirectUri: `${origin}/api/google/callback`,
       state,
       challenge,

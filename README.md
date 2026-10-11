@@ -39,6 +39,19 @@ Schema changes go in a new numbered file in `migrations/`; never edit one
 that has already been applied. Run `yarn cf-typegen` after changing
 `wrangler.jsonc`.
 
+**Per-deployment configuration.** The same build serves every deployment. Each
+one needs its own `name` and D1 database in `wrangler.jsonc`, and one secret:
+
+```bash
+wrangler secret put ENCRYPTION_KEY   # 32 random bytes, base64; set once, never change
+```
+
+Everything else is set by an operator in **Platform → Settings**, with no
+redeploy: the app's address, email (the cPanel mailbox), the Google OAuth client,
+and push keys (generated there). Secrets are stored encrypted with
+`ENCRYPTION_KEY`. Values in the environment (`.dev.vars`, secrets) are a fallback
+for any group not saved in the console.
+
 To seed a fresh live database:
 `node scripts/seed.mjs --out seed.sql --random-passwords`, then
 `wrangler d1 execute DB --remote --file seed.sql`. The new passwords are
@@ -79,15 +92,21 @@ printed once.
   - The sidebar switcher changes workspace. `/workspaces` is the picker; on
     sign-in it opens your only workspace or your last-used one automatically.
 - **Roles inside a workspace**:
-  - **Administrators** create, edit and delete tasks and meetings.
-  - **Members** see only tasks assigned to them and meetings they attend or
-    organize. On their own tasks they can change the status (not to
-    Cancelled); everything else is read-only.
-- **Tasks**: `T-n` numbers per workspace; status, priority, dates with
+  - **Administrators** create, edit and delete workspace tasks (assigned to
+    anyone) and meetings.
+  - **Members** see only workspace tasks assigned to them and meetings they
+    attend or organize. On those tasks they can change the status (not to
+    Cancelled); everything else is read-only. Members can't assign tasks.
+  - **Private tasks**: anyone can create tasks for themselves. Only their
+    creator sees them (not even other administrators or operators), and the
+    creator can edit, cancel and delete them. They can't be assigned to others.
+- **Tasks**: status, priority, dates with
   optional time, assignees (workspace members), and **Related to** a meeting.
   List view with a side panel, inline status (and priority for admins),
-  search and pagination. Members: Assigned to me / Completed. Administrators:
-  All / Completed with filters (status, priority, assignee, due). "Related
+  search and pagination. Tabs: **Mine** (your private tasks, plus your own
+  Google Tasks when Google is connected), **Assigned to me**, **All**
+  (administrators only, with filters for status, priority, assignee and due)
+  and **Completed**. "Related
   to" is offered on the task page only (default: nothing); tasks created
   from a meeting are linked to it automatically.
 - **Calendar**: Month and Week views (an agenda list on phones), meetings with
@@ -95,19 +114,43 @@ printed once.
   the meeting; members see only theirs).
 - **Members** (Administrators, `/w/<accountId>/members`):
   - See each member's name, email and role.
-  - Add someone by **email and role**. An existing sign-in just joins; a new
-    email gets an account with a one-time temporary password to share (they
-    can change it in Settings).
+  - Add someone by **email and role**:
+    - **A new email** gets an account at once and an **invitation email** with
+      a one-time link to choose a password (valid 7 days; **Resend invitation**
+      on the members page until they do). Without email set up, or if sending
+      fails, the administrator gets a one-time temporary password instead.
+    - **Someone who already has an account** is *invited*: they get an email
+      and a notification, and join only when they **Accept** on the workspaces
+      page (or **Decline**). The administrator sees them under **Waiting to
+      accept** (Resend, Cancel invitation) and is notified of the answer.
+  - Operators creating users in Platform → Users can **email an invitation**
+    instead of setting a password (the default when email is set up). Attaching
+    a user to a workspace from the console is immediate.
   - Change a member's role, or **revoke** their access to the workspace.
     Names, emails and passwords are managed by each person (Settings) or the
     platform operator.
 - **Settings**: change your name and language, and change your own password.
+- **Several email addresses, one login** (Settings → Email addresses): for
+  people whose workspaces each know them by a different address. Extra
+  addresses are confirmed by an emailed link (24 hours) and then:
+  - sign in (same password, no switching accounts);
+  - match invitations, so an admin inviting `omar@client.com` reaches Omar's
+    existing account instead of creating a second one;
+  - can be chosen per workspace: that workspace sees only that address on its
+    members list, and its notification emails go there.
+  Unconfirmed addresses match nothing. Up to 5 extra addresses; any confirmed
+  one can become the primary. Operators find people by any of their addresses.
+- **Forgot password?** (on the sign-in page, needs email set up): emails a
+  one-time link valid for 1 hour (at most one email a minute). The answer is
+  the same whether or not the address has an account. Choosing a new password
+  signs the person out of every other session.
 
 ## Notifications and reminders
 
-- **In-app** (sidebar bell) and **Web Push** (free, via the PWA), per person
-  and per type in Settings → Notifications. Push sends an empty ping; the
-  service worker fetches the text over the signed-in API.
+- **In-app** (sidebar bell), **Web Push** (free, via the PWA) and **Email**,
+  per person and per type in Settings → Notifications. Email is off until the
+  person turns it on. Push sends an empty ping; the service worker fetches the
+  text over the signed-in API.
 - **Due date reminders**: a Cron Trigger (`0 * * * *`, see `wrangler.jsonc`)
   runs `server/services/reminders.ts` hourly. Each person gets reminders at
   08:00 in their own time zone (reported by their browser; UTC until then) for
@@ -116,8 +159,17 @@ printed once.
 - The Worker entry is `custom-worker.ts`: OpenNext's app for HTTP plus the
   `scheduled` handler. Test locally with
   `wrangler dev --test-scheduled` and `curl "localhost:8787/__scheduled?cron=0+*+*+*+*"`.
-- Push keys: `VAPID_PUBLIC_KEY` (in `wrangler.jsonc`) and the
-  `VAPID_PRIVATE_KEY` secret (`wrangler secret put`, and `.dev.vars` locally).
+- Push keys: **Generate new keys** in Platform → Settings (or
+  `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` in `.dev.vars`). New keys drop every
+  device's subscription; people turn push on again.
+- **Email** (`server/mail/`): invitations, password resets and email
+  notifications go out over SMTP through the cPanel mailbox, set in
+  Platform → Settings (mail server, port 465 with TLS, mailbox and password,
+  From), with **Send test email**. A small SMTP client on `node:tls` runs in
+  both `next dev` and Workers; Workers can't use port 25, and the app won't
+  send a password to a remote server without TLS. Locally,
+  `node scripts/smtp-mock.mjs` catches mail (viewer on http://localhost:2526);
+  `.dev.vars` points at it by default.
 
 ## Google Calendar and Google Tasks (two-way sync)
 
@@ -129,19 +181,29 @@ account in Settings.
     a "Taskly · <Workspace>" task list and calendar in their Google account.
   - Edits go both ways, with the same rules as the app: members can only tick
     tasks done in Google; their other edits are undone, with a notice.
-  - New items an administrator adds to those lists/calendars become workspace
-    tasks or meetings.
+  - A task anyone adds to their "Taskly · <Workspace>" list becomes their own
+    private task. An event an administrator adds there becomes a meeting.
+  - Private tasks go to Google only if their **Sync to Google Tasks** switch
+    is on.
 - **Personal items.** Their own Google Tasks and calendars show in Taskly, read
-  and written live and private to them: the Personal tab on Tasks, the "Google
+  and written live and private to them: under **Mine** on Tasks, the "Google
   events" switch on the Calendar, and the dashboard.
 - **How it runs.**
   - Writes queue jobs in `google_sync_jobs`; the jobs run right after the
     response, and every 5 minutes from the second Cron Trigger
     (`server/google/cron.ts`).
   - Google Tasks is polled, because it has no push.
-  - Calendars use push notifications to `/api/google/webhook` when `APP_ORIGIN`
-    is a public https URL; otherwise they are polled.
-  - "Sync now" in Settings, and opening the app, pull right away.
+  - Calendars use push notifications to `/api/google/webhook` when the app
+    address (Platform → Settings) is a public https URL; otherwise they are polled.
+  - "Sync now" in Settings, and opening the app, pull right away. "Sync now"
+    also retries that person's jobs that had stopped retrying.
+- **Time zone.** Meeting times are in the workspace's zone, set by an operator
+  in Platform → Accounts (otherwise each organiser's own). Changing it rewrites
+  the times on every Google copy.
+- **When sync fails.** A job retries after 1, 5 and 30 minutes and 2 hours,
+  then stops. Operators then get a notification (at most one an hour), and
+  Platform → Google sync lists failing work and people who must reconnect,
+  with a **Retry failed** button.
 
 Setup:
 
@@ -149,11 +211,11 @@ Setup:
    OAuth consent screen, and create an OAuth client of type **Web
    application**. Its redirect URIs are `http://localhost:3100/api/google/callback`
    and `https://<your domain>/api/google/callback`.
-2. Copy `.dev.vars.example` to `.dev.vars` and fill in `GOOGLE_CLIENT_ID`,
-   `GOOGLE_CLIENT_SECRET` and `GOOGLE_TOKEN_KEY` (32 random bytes, base64). In
-   production use `wrangler secret put` for each, and set `APP_ORIGIN` in
-   `wrangler.jsonc`.
-3. Run `yarn db:migrate:local` (or `:remote`) for `migrations/0007_google_sync.sql`.
+2. In Platform → Settings, set the app address, then enter the Client ID and
+   Client secret under **Google sign-in** (it shows the redirect URI to add).
+   Locally you can use `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` in
+   `.dev.vars` instead. `ENCRYPTION_KEY` must be set (it encrypts the tokens).
+3. Run `yarn db:migrate:local` (or `:remote`) for the migrations.
 4. While the consent screen is in *Testing*, only listed test users can connect,
    and Google expires their access after 7 days. Publish the app (Google reviews
    the Calendar/Tasks scopes) before real users connect.
@@ -161,7 +223,7 @@ Setup:
 Without a Google project, `node scripts/google-mock.mjs` runs a local stand-in
 for Google (OAuth, Tasks, Calendar). Point `GOOGLE_API_ORIGIN` and
 `GOOGLE_OAUTH_ORIGIN` at it, with any client id and secret. Unit tests for the
-mapping and merge logic: `yarn test`.
+mapping, merge and permission rules: `yarn test`.
 
 ## Structure
 

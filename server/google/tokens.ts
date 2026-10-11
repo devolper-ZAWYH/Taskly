@@ -1,6 +1,7 @@
 /**
- * Google tokens at rest: AES-GCM with the GOOGLE_TOKEN_KEY secret (32 bytes,
- * base64), stored as `v1.<iv>.<ciphertext>`. Plus PKCE and a constant-time
+ * Secrets at rest (Google tokens, secrets saved in Platform → Settings):
+ * AES-GCM with the ENCRYPTION_KEY secret (32 bytes, base64), stored as
+ * `v1.<iv>.<ciphertext>`. Plus PKCE and a constant-time
  * compare for OAuth state and webhook channel tokens.
  */
 
@@ -25,7 +26,7 @@ function importKey(secret: string): Promise<CryptoKey> {
   let key = keys.get(secret)
   if (!key) {
     const raw = fromBase64(secret)
-    if (raw.length !== 32) throw new Error("GOOGLE_TOKEN_KEY must be 32 bytes, base64")
+    if (raw.length !== 32) throw new Error("ENCRYPTION_KEY must be 32 bytes, base64")
     key = crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"])
     keys.set(secret, key)
   }

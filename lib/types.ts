@@ -18,6 +18,8 @@ export type User = {
   timeZone: string | null
   /** How the calendar opens on a phone. */
   calendarView: CalendarPreference
+  /** Invited by email and hasn't chosen a password yet. */
+  invitePending: boolean
 }
 
 export const CALENDAR_PREFERENCES = ["calendar", "list"] as const
@@ -35,6 +37,8 @@ export type Account = {
   createdAt: string
   /** Versioned URL of the workspace logo, or null for the default brand. */
   logoUrl: string | null
+  /** IANA zone its meeting times are in (for Google Calendar), or null: each organiser's own. */
+  timeZone: string | null
 }
 
 /** Logo formats a workspace can upload. */
@@ -60,6 +64,27 @@ export type Membership = {
 /** A workspace member as seen inside that workspace. */
 export type WorkspaceMember = PublicUser & { role: Role; membershipId: string }
 
+/** Someone with an account, invited to a workspace; they join when they accept. */
+export type WorkspaceInvitation = {
+  id: string
+  userId: string
+  name: string
+  email: string
+  avatarUrl: string | null
+  role: Role
+  invitedBy: string | null
+  createdAt: string
+}
+
+/** An invitation waiting for the signed-in person (the workspaces page). */
+export type MyInvitation = {
+  id: string
+  account: Pick<Account, "id" | "name" | "logoUrl">
+  role: Role
+  invitedBy: string | null
+  createdAt: string
+}
+
 /** A workspace the signed-in user can open, with their effective role there. */
 export type MyWorkspace = { account: Account; role: Role; viaOperator: boolean }
 
@@ -70,8 +95,6 @@ export type TaskPriority = "none" | "low" | "medium" | "high" | "urgent"
 export type Task = {
   id: string
   accountId: string
-  /** Display number, unique within the workspace (T-n). */
-  number: number
   title: string
   description: string
   status: TaskStatus
@@ -86,6 +109,10 @@ export type Task = {
   createdById: string | null
   /** Meeting this task was created from (an "action item"), if any. */
   meetingId: string | null
+  /** Only its creator (its sole assignee) can see it, administrators included. */
+  private: boolean
+  /** Private tasks: copied to the owner's Google Tasks. */
+  googleSync: boolean
   completedAt: string | null
   createdAt: string
   updatedAt: string
@@ -109,8 +136,12 @@ export type Meeting = {
   updatedAt: string
 }
 
-/** Task list tabs: members see `assigned`; administrators see `all`; both see `completed`. */
-export type TaskScope = "assigned" | "completed" | "all"
+/**
+ * Task list tabs. `mine`: your private tasks. `assigned`: workspace tasks
+ * assigned to you. `all` (administrators): every workspace task. `completed`:
+ * closed ones you can see.
+ */
+export type TaskScope = "mine" | "assigned" | "all" | "completed"
 
 export type DueFilter = "overdue" | "today" | "week" | "none"
 
@@ -140,6 +171,10 @@ export type TaskInput = {
   assigneeIds: string[]
   /** Set when the task is created as an action item of a meeting. */
   meetingId?: string | null
+  /** On create: just for its creator. Members can only create private tasks. */
+  private?: boolean
+  /** Private tasks: copy it to the owner's Google Tasks. */
+  googleSync?: boolean
 }
 
 export type MeetingInput = {
@@ -156,8 +191,16 @@ export type MeetingInput = {
 export type AddMemberInput = { email: string; role: Role }
 
 export type AddMemberResult = {
-  member: WorkspaceMember
-  /** Set when a new account was created: share it once; they can change it in Settings. */
+  /** Null when they already had an account: they were invited and join on accepting. */
+  member: WorkspaceMember | null
+  /** Set instead of `member` for someone who already had an account. */
+  invitation: WorkspaceInvitation | null
+  /** A new account was emailed a link to set their password. */
+  invited: boolean
+  /**
+   * Set when a new account was created and couldn't be invited by email (email
+   * isn't set up, or sending failed): share it once; they can change it in Settings.
+   */
   temporaryPassword: string | null
 }
 
@@ -167,6 +210,8 @@ export type UpdateMemberInput = { role: Role }
 export type AccountSummary = Account & { memberCount: number }
 
 export type UserSummary = PublicUser & {
+  /** Their confirmed addresses besides the primary one. */
+  otherEmails: string[]
   workspaces: { membershipId: string; accountId: string; accountName: string; role: Role }[]
 }
 
@@ -185,7 +230,7 @@ export const NOTIFICATION_KINDS = [
 ] as const
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number]
 
-export type NotificationChannel = "inApp" | "push"
+export type NotificationChannel = "inApp" | "push" | "email"
 
 export type NotificationPrefs = Record<NotificationKind, Record<NotificationChannel, boolean>>
 
@@ -238,6 +283,47 @@ export type GoogleStatus = {
   lastError: string | null
   /** Last time anything synced for this person (ISO), or null. */
   lastSyncAt: string | null
+  /** Their sync jobs that stopped retrying; "Sync now" tries them again. */
+  failedJobs: number
+}
+
+/** A sync job that failed at least once (operator console). */
+export type GoogleSyncJobProblem = {
+  id: string
+  kind: string
+  workspace: string | null
+  person: string | null
+  /** The title of the task or meeting it was about, if any. */
+  item: string | null
+  attempts: number
+  error: string | null
+  /** Set once it stopped retrying. */
+  failedAt: string | null
+  nextAttemptAt: string
+}
+
+/** Someone whose Google connection needs them to reconnect (operator console). */
+export type GoogleConnectionProblem = {
+  userId: string
+  name: string
+  email: string
+  state: "revoked" | "error"
+  error: string | null
+  since: string
+}
+
+/** How Google sync is doing across the platform (operator console). */
+export type GoogleSyncHealth = {
+  configured: boolean
+  connections: number
+  /** Jobs that stopped retrying. */
+  failed: number
+  /** Jobs that failed but will try again. */
+  retrying: number
+  /** Jobs waiting for their first run. */
+  queued: number
+  jobs: GoogleSyncJobProblem[]
+  people: GoogleConnectionProblem[]
 }
 
 export type GoogleContainerKind = "tasklist" | "calendar"
@@ -311,4 +397,56 @@ export type PersonalEventInput = {
   endTime: string
   allDay: boolean
   timeZone: string
+}
+
+/** Where a group of deployment settings comes from (Platform → Settings). */
+export type SettingSource = "console" | "environment" | "unset"
+
+/** Deployment settings as operators see them. Secrets are never sent back, only whether they're set. */
+export type PlatformSettings = {
+  /** ENCRYPTION_KEY is set, so secrets can be saved here. */
+  encryptionReady: boolean
+  app: { source: SettingSource; origin: string }
+  mail: {
+    source: SettingSource
+    host: string
+    port: number
+    secure: boolean
+    user: string
+    from: string
+    passwordSet: boolean
+    ready: boolean
+  }
+  google: {
+    source: SettingSource
+    clientId: string
+    secretSet: boolean
+    /** Add this to the OAuth client's authorised redirect URIs. */
+    redirectUri: string
+    ready: boolean
+  }
+  push: { source: SettingSource; publicKey: string; ready: boolean; devices: number }
+}
+
+/** One group to save. An empty secret keeps the current one. */
+export type PlatformSettingsInput =
+  | { group: "app"; origin: string }
+  | {
+      group: "mail"
+      host: string
+      port: number
+      secure: boolean
+      user: string
+      from: string
+      password: string
+    }
+  | { group: "google"; clientId: string; clientSecret: string }
+
+/** The signed-in person's email addresses (Settings → Email addresses). */
+export type MyEmails = {
+  /** Sign-in default and the address for workspaces that don't pick another. */
+  primary: string
+  others: { email: string; confirmed: boolean; workspaces: string[] }[]
+  /** Each workspace they belong to and the address it knows them by. */
+  workspaces: { accountId: string; name: string; email: string }[]
 }

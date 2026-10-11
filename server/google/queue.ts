@@ -7,7 +7,7 @@
 import { AppError } from "@/lib/api/core"
 import type { Ctx } from "@/server/context"
 import { newId } from "@/server/crypto"
-import { first, nowIso, run } from "@/server/db"
+import { all, first, nowIso, run } from "@/server/db"
 import { GoogleError } from "@/server/google/client"
 import { googleConfigured } from "@/server/google/config"
 
@@ -58,7 +58,7 @@ export async function enqueue(
   jobs: Job[],
   options: { drain?: boolean } = {},
 ): Promise<void> {
-  if (jobs.length === 0 || !googleConfigured(ctx.env)) return
+  if (jobs.length === 0 || !(await googleConfigured(ctx))) return
   const now = nowIso()
   const results = await ctx.db.batch(
     jobs.map((job) =>
@@ -100,6 +100,19 @@ export function queueGoogleSync(
     ctx,
     [{ kind: kind === "task" ? "sync_task" : "sync_meeting", accountId, entityId }],
     options,
+  )
+}
+
+/** After a workspace's time zone changed: rewrite the times on every Google copy of its meetings. */
+export async function queueMeetingResync(ctx: Ctx, accountId: string): Promise<void> {
+  const rows = await all<{ entity_id: string }>(
+    ctx.db,
+    "SELECT DISTINCT entity_id FROM google_links WHERE kind = 'meeting' AND account_id = ?",
+    accountId,
+  )
+  await enqueue(
+    ctx,
+    rows.map((row) => ({ kind: "sync_meeting" as const, accountId, entityId: row.entity_id })),
   )
 }
 
@@ -178,6 +191,9 @@ async function failJob(ctx: Ctx, job: JobRow, error: unknown): Promise<void> {
       nowIso(),
       job.id,
     )
+    // Loaded lazily, like the job handlers: notifications sit above this file.
+    const { alertJobFailed } = await import("@/server/google/health")
+    await alertJobFailed(ctx, `${job.kind}: ${message}`).catch(logDrainError)
     return
   }
   await run(

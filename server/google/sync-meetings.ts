@@ -19,6 +19,7 @@ import {
 } from "@/server/google/mapping"
 import { diff, restrict, threeWayMerge } from "@/server/google/merge"
 import { connectedMembers, meetingFooter, noticeTo, workspaceZone } from "@/server/google/people"
+import { meetingFieldsFor, onCopyDeleted, onNewEventInGoogle } from "@/server/google/policy"
 import { enqueue, queueGoogleSync } from "@/server/google/queue"
 import {
   deleteLink,
@@ -36,16 +37,6 @@ import {
   deleteMeetingAs,
   findMeeting,
 } from "@/server/services/meetings"
-
-/** Administrators may change all of these from Google; members none (as in the app). */
-const ADMIN_FIELDS = [
-  "title",
-  "notes",
-  "date",
-  "startTime",
-  "endTime",
-  "location",
-] as const satisfies (keyof MeetingFields)[]
 
 const meetingLink = (meeting: Meeting) =>
   `/w/${meeting.accountId}/calendar?view=week&date=${meeting.date}&meeting=${meeting.id}`
@@ -117,14 +108,12 @@ export async function syncMeetingCopy(
   const zone = await workspaceZone(ctx, meeting.accountId, meeting.organizerId)
   const base = JSON.parse(link.base) as MeetingFields
   const actor = await actorFor(ctx, userId, meeting.accountId)
+  // Read the copy in the zone it was written in: if the workspace (or
+  // organiser) zone changed since, that alone isn't an edit in Google.
   // Null when someone made the copy all-day, multi-day or repeating: put ours back.
-  const actual = eventFields(remote, zone)
+  const actual = eventFields(remote, link.zone ?? zone)
   const theirs = actual ? { ...actual, title: actual.title || base.title } : base
-  const { remote: permitted, blocked } = restrict(
-    base,
-    theirs,
-    actor?.role === "administrator" ? ADMIN_FIELDS : [],
-  )
+  const { remote: permitted, blocked } = restrict(base, theirs, meetingFieldsFor(actor?.role ?? null))
   const merged = threeWayMerge(
     base,
     meetingFields(meeting),
@@ -144,7 +133,10 @@ export async function syncMeetingCopy(
   const footer = await meetingFooter(ctx, current, userId)
   const footerText = footer.join("\n")
   const needsPatch =
-    !actual || Object.keys(diff(actual, merged.value)).length > 0 || footerText !== link.footer
+    !actual ||
+    Object.keys(diff(actual, merged.value)).length > 0 ||
+    footerText !== link.footer ||
+    link.zone !== zone
   let etag = remote.etag ?? null
   if (needsPatch) {
     const patched = await calendarApi.patch(
@@ -160,6 +152,7 @@ export async function syncMeetingCopy(
     etag,
     base: JSON.stringify(merged.value),
     footer: footerText,
+    zone,
   })
   if (blocked.length > 0 || !actual) {
     await noticeTo(ctx, userId, "google_change_reverted", {
@@ -202,6 +195,7 @@ async function insertCopy(
     etag: created.etag ?? null,
     base: JSON.stringify(fields),
     footer: footer.join("\n"),
+    zone,
   })
 }
 
@@ -218,7 +212,7 @@ async function copyDeleted(
 ): Promise<void> {
   await deleteLink(ctx.db, link)
   const actor = await actorFor(ctx, userId, meeting.accountId)
-  if (actor?.role === "administrator" && meeting.organizerId === userId) {
+  if (actor && onCopyDeleted(actor.role, meeting.organizerId === userId) === "delete") {
     await deleteMeetingAs(ctx, actor, meeting)
     await queueGoogleSync(ctx, "meeting", meeting.accountId, meeting.id, { drain: false })
     return
@@ -276,7 +270,7 @@ export async function importEvent(
   const actor = await actorFor(ctx, userId, accountId)
   const zone = await workspaceZone(ctx, accountId, userId)
   const fields = eventFields(event, zone)
-  if (actor?.role !== "administrator" || !fields) {
+  if (!actor || !fields || onNewEventInGoogle(actor.role, true) === "move") {
     try {
       await calendarApi.move(g, container.google_id, event.id, "primary")
     } catch (error) {
@@ -310,5 +304,6 @@ export async function importEvent(
     etag: patched.etag ?? null,
     base: JSON.stringify(value),
     footer: footer.join("\n"),
+    zone,
   })
 }

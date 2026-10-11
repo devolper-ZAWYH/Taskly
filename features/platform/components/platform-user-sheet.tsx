@@ -1,6 +1,6 @@
 "use client"
 
-import { Trash2Icon } from "lucide-react"
+import { MailIcon, Trash2Icon } from "lucide-react"
 import * as React from "react"
 import { ConfirmDialog } from "@/components/shell/confirm-dialog"
 import { FormError, FormRow } from "@/components/shell/form-row"
@@ -28,6 +28,7 @@ import {
   useDetachUser,
   usePlatformUsers,
   useSetMembershipRole,
+  useResendUserInvite,
   useSetPlatformUserPassword,
   useUpdatePlatformUser,
 } from "@/features/platform/hooks/use-platform"
@@ -62,6 +63,7 @@ function UserDetail({ user, onClose }: { user: UserSummary; onClose: () => void 
   const setRole = useSetMembershipRole()
   const detach = useDetachUser()
   const deleteUser = useDeletePlatformUser()
+  const resendInvite = useResendUserInvite()
   const [confirmDelete, setConfirmDelete] = React.useState(false)
   const isSelf = me.id === user.id
 
@@ -94,6 +96,12 @@ function UserDetail({ user, onClose }: { user: UserSummary; onClose: () => void 
             <SheetDescription className="truncate" dir="ltr">
               {user.email}
             </SheetDescription>
+            {/* Their other confirmed addresses (they manage these in Settings). */}
+            {user.otherEmails.length > 0 ? (
+              <p className="truncate text-xs text-foreground-muted" dir="ltr">
+                {user.otherEmails.join(" · ")}
+              </p>
+            ) : null}
           </div>
         </div>
       </SheetHeader>
@@ -196,6 +204,34 @@ function UserDetail({ user, onClose }: { user: UserSummary; onClose: () => void 
                 {t("users.form.passwordSectionHint")}
               </p>
             </div>
+            {user.invitePending ? (
+              <div
+                className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-dashed p-3"
+                data-testid="user-invite-pending"
+              >
+                <span className="text-sm">{t("platform.invitePendingHint")}</span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  loading={resendInvite.isPending}
+                  onClick={() =>
+                    resendInvite.mutate(user.id, {
+                      onSuccess: () =>
+                        toastManager.add({
+                          type: "success",
+                          title: t("users.inviteResent", { email: user.email }),
+                        }),
+                      onError: (error) =>
+                        toastManager.add({ type: "error", title: errorMessage(error) }),
+                    })
+                  }
+                >
+                  <MailIcon />
+                  {t("users.resendInvite")}
+                </Button>
+              </div>
+            ) : null}
             <FormRow label={t("users.form.newPassword")} htmlFor="p-edit-password">
               <PasswordInput id="p-edit-password" value={password} onChange={setPasswordValue} />
             </FormRow>

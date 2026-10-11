@@ -1,13 +1,14 @@
 import { cookies } from "next/headers"
 import { currentUser } from "@/server/context"
 import { nowIso } from "@/server/db"
-import { googleConfigured, OAUTH_COOKIE, REQUIRED_SCOPES } from "@/server/google/config"
+import { googleClient, OAUTH_COOKIE, REQUIRED_SCOPES } from "@/server/google/config"
 import { purgeUser } from "@/server/google/containers"
 import { exchangeCode, idTokenClaims, revokeToken } from "@/server/google/oauth"
 import { enqueue } from "@/server/google/queue"
 import { getConnection } from "@/server/google/store"
 import { encryptToken, sameSecret } from "@/server/google/tokens"
 import { requestContext } from "@/server/request"
+import { encryptionKey } from "@/server/settings"
 
 const redirect = (location: string) => new Response(null, { status: 302, headers: { location } })
 
@@ -29,7 +30,9 @@ export async function GET(request: Request) {
 
   const me = await currentUser(ctx)
   if (!me) return redirect(`${url.origin}/login`)
-  if (!googleConfigured(ctx.env)) return fail("unconfigured")
+  const client = await googleClient(ctx)
+  const key = encryptionKey(ctx.env)
+  if (!client || !key) return fail("unconfigured")
   if (url.searchParams.get("error")) return fail("denied")
 
   const [state, verifier] = saved.split(".")
@@ -39,7 +42,13 @@ export async function GET(request: Request) {
   }
 
   try {
-    const tokens = await exchangeCode(ctx.env, code, `${url.origin}/api/google/callback`, verifier)
+    const tokens = await exchangeCode(
+      ctx.env,
+      client,
+      code,
+      `${url.origin}/api/google/callback`,
+      verifier,
+    )
     const granted = (tokens.scope ?? "").split(" ")
     const claims = idTokenClaims(tokens.id_token)
     if (!REQUIRED_SCOPES.every((scope) => granted.includes(scope))) {
@@ -53,7 +62,6 @@ export async function GET(request: Request) {
     const previous = await getConnection(ctx.db, me.id)
     if (previous && previous.google_sub !== claims.sub) await purgeUser(ctx, me.id)
 
-    const key = ctx.env.GOOGLE_TOKEN_KEY
     const now = nowIso()
     await ctx.db
       .prepare(

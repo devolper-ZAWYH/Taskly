@@ -23,7 +23,7 @@ import { date } from "@/server/validate"
 
 const OPEN = `t.status NOT IN ('completed', 'cancelled')`
 const MINE = `EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = ?)`
-const DUE_ORDER = `t.due_date, CASE WHEN t.due_time = '' THEN '23:59' ELSE t.due_time END, t.number`
+const DUE_ORDER = `t.due_date, CASE WHEN t.due_time = '' THEN '23:59' ELSE t.due_time END, t.created_at`
 
 function shift(ymd: string, days: number): string {
   const d = new Date(`${ymd}T00:00:00Z`)
@@ -96,7 +96,7 @@ export async function getDashboard(ctx: Ctx, accountId: string, today: unknown):
          SUM(CASE WHEN ${OPEN} AND t.due_date >= ? AND t.due_date <= ? THEN 1 ELSE 0 END) AS due_week,
          SUM(CASE WHEN t.status = 'completed' AND t.completed_at >= ? THEN 1 ELSE 0 END) AS completed_week,
          SUM(CASE WHEN t.created_at >= ? THEN 1 ELSE 0 END) AS created_week
-       FROM tasks t WHERE t.account_id = ?`,
+       FROM tasks t WHERE t.account_id = ? AND t.private = 0`,
       day,
       day,
       shift(day, 6),
@@ -113,6 +113,7 @@ export async function getDashboard(ctx: Ctx, accountId: string, today: unknown):
        JOIN users u ON u.id = ms.user_id
        LEFT JOIN task_assignees ta ON ta.user_id = u.id
        LEFT JOIN tasks t ON t.id = ta.task_id AND t.account_id = ms.account_id AND ${OPEN}
+         AND t.private = 0
        WHERE ms.account_id = ? AND u.active = 1
        GROUP BY u.id
        ORDER BY open_count DESC, u.name COLLATE NOCASE`,
@@ -122,7 +123,7 @@ export async function getDashboard(ctx: Ctx, accountId: string, today: unknown):
     all<TaskRow>(
       ctx.db,
       `SELECT ${TASK_COLUMNS} FROM tasks t
-       WHERE t.account_id = ? AND ${OPEN}
+       WHERE t.account_id = ? AND ${OPEN} AND t.private = 0
          AND NOT EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id)
        ORDER BY CASE WHEN t.due_date = '' THEN 1 ELSE 0 END, ${DUE_ORDER} LIMIT 5`,
       accountId,

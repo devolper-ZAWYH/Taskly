@@ -6,8 +6,10 @@ import {
   Building2Icon,
   CalendarDaysIcon,
   LogOutIcon,
+  RefreshCwIcon,
   SettingsIcon,
   ShieldIcon,
+  SlidersHorizontalIcon,
   SquareCheckBigIcon,
   UsersIcon,
   type LucideIcon,
@@ -82,6 +84,8 @@ export function useNavGroups(): NavGroup[] {
     items: [
       link("accounts", t("platform.accounts"), Building2Icon, "/platform/accounts"),
       link("platform-users", t("platform.users"), UsersIcon, "/platform/users"),
+      link("platform-google", t("platform.google.title"), RefreshCwIcon, "/platform/google"),
+      link("platform-settings", t("platform.settings.title"), SlidersHorizontalIcon, "/platform/settings"),
     ],
   }
 

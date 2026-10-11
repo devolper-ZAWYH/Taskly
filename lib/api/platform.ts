@@ -24,7 +24,7 @@ export const createAccount = (input: { name: string }): Promise<Account> =>
 
 export const updateAccount = (
   id: string,
-  input: Partial<{ name: string; active: boolean }>,
+  input: Partial<{ name: string; active: boolean; timeZone: string | null }>,
 ): Promise<Account> => rpc("updateAccount", id, input)
 
 /** Upload (base64) or remove (null) a workspace logo. */
@@ -38,12 +38,20 @@ export const listAccountMembers = (accountId: string): Promise<WorkspaceMember[]
 
 export const listAllUsers = (search = ""): Promise<UserSummary[]> => rpc("listAllUsers", search)
 
+/**
+ * With `invite`, they get an email to choose their password; otherwise
+ * `password` is theirs. `invited` is false if that email couldn't be sent.
+ */
 export const createUser = (input: {
   name: string
   email: string
   password: string
   isOperator: boolean
-}): Promise<PublicUser> => rpc("createUser", input)
+  invite: boolean
+}): Promise<PublicUser & { invited: boolean }> => rpc("createUser", input)
+
+/** Email a new password link to someone who hasn't accepted their invitation. */
+export const resendUserInvite = (id: string): Promise<void> => rpc("resendUserInvite", id)
 
 export const updateUser = (
   id: string,

@@ -15,11 +15,12 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { toastManager } from "@/components/ui/toast"
+import { useEmailAvailable } from "@/features/notifications/hooks"
 import { RoleSelect } from "@/features/users/components/role-select"
 import { useAddMember } from "@/features/users/hooks/use-users"
 import type { AddMemberResult } from "@/lib/api/members"
 import { useLocale } from "@/lib/i18n/locale-provider"
-import type { Role } from "@/lib/types"
+import type { Role, WorkspaceMember } from "@/lib/types"
 
 /** Add someone to the workspace: just their email and role. */
 export function UserCreateDialog({
@@ -39,9 +40,12 @@ export function UserCreateDialog({
   )
 }
 
+/** A new account whose sign-in details the admin has to pass on themselves. */
+type NewAccount = AddMemberResult & { member: WorkspaceMember; temporaryPassword: string }
+
 function UserCreateFlow({ onDone }: { onDone: () => void }): React.ReactElement {
-  const [created, setCreated] = React.useState<AddMemberResult | null>(null)
-  return created?.temporaryPassword ? (
+  const [created, setCreated] = React.useState<NewAccount | null>(null)
+  return created ? (
     <NewAccountDetails result={created} onDone={onDone} />
   ) : (
     <UserCreateForm onAdded={setCreated} onDone={onDone} />
@@ -52,7 +56,7 @@ function UserCreateForm({
   onAdded,
   onDone,
 }: {
-  onAdded: (result: AddMemberResult) => void
+  onAdded: (result: NewAccount) => void
   onDone: () => void
 }): React.ReactElement {
   const { t, errorMessage } = useLocale()
@@ -66,13 +70,18 @@ function UserCreateForm({
       { email, role },
       {
         onSuccess: (result) => {
-          if (result.temporaryPassword) {
-            onAdded(result)
+          const { member, invitation, temporaryPassword } = result
+          if (member && temporaryPassword) {
+            onAdded({ ...result, member, temporaryPassword })
             return
           }
           toastManager.add({
             type: "success",
-            title: t("users.create.created", { name: result.member.name }),
+            title: invitation
+              ? t("users.create.pending", { name: invitation.name })
+              : result.invited
+                ? t("users.create.invited", { email: member?.email ?? email })
+                : t("users.create.created", { name: member?.name ?? email }),
           })
           onDone()
         },
@@ -122,10 +131,12 @@ function NewAccountDetails({
   result,
   onDone,
 }: {
-  result: AddMemberResult
+  result: NewAccount
   onDone: () => void
 }): React.ReactElement {
   const { t } = useLocale()
+  // Email is set up, so they'd have been invited: sending must have failed.
+  const mailFailed = useEmailAvailable().data === true
   const [copied, setCopied] = React.useState(false)
   const details = `${result.member.email}\n${result.temporaryPassword}`
 
@@ -144,7 +155,9 @@ function NewAccountDetails({
         <DialogTitle className="font-display text-xl">
           {t("users.create.accountCreated", { name: result.member.name })}
         </DialogTitle>
-        <DialogDescription>{t("users.create.shareHint")}</DialogDescription>
+        <DialogDescription>
+          {mailFailed ? t("users.create.mailFailed") : t("users.create.shareHint")}
+        </DialogDescription>
       </DialogHeader>
       <DialogPanel>
         <dl className="grid gap-3 rounded-md border bg-surface-muted p-4 text-sm">

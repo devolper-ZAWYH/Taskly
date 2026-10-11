@@ -1,5 +1,6 @@
 "use client"
 
+import { LockIcon } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -13,7 +14,7 @@ import {
 import { AssigneeStack } from "@/features/tasks/components/assignees"
 import { PriorityLabel, StatusBadge } from "@/features/tasks/components/task-badges"
 import { usePeople, useUpdateTask } from "@/features/tasks/hooks/use-tasks"
-import { formatTaskRef, isOverdue, PRIORITIES, STATUSES } from "@/features/tasks/lib/task-meta"
+import { isOverdue, PRIORITIES, STATUSES } from "@/features/tasks/lib/task-meta"
 import { useViewer } from "@/features/workspace/workspace-context"
 import { canEditTask, MEMBER_STATUSES } from "@/lib/api/tasks"
 import { useLocale } from "@/lib/i18n/locale-provider"
@@ -26,8 +27,8 @@ const INLINE_TRIGGER =
 function InlineStatus({ task }: { task: Task }): React.ReactElement {
   const { t } = useLocale()
   const update = useUpdateTask()
-  // Members move their own tasks along but can't cancel them.
-  const memberOnly = !canEditTask(useViewer())
+  // Members move workspace tasks along but can't cancel them.
+  const memberOnly = !canEditTask(useViewer(), task)
   return (
     <div onClick={(e) => e.stopPropagation()}>
       <Select
@@ -55,8 +56,9 @@ function InlineStatus({ task }: { task: Task }): React.ReactElement {
 function InlinePriority({ task }: { task: Task }): React.ReactElement {
   const { t } = useLocale()
   const update = useUpdateTask()
-  // Only administrators change priority; members just see it.
-  if (!canEditTask(useViewer())) return <PriorityLabel priority={task.priority} />
+  // Only administrators (or a private task's owner) change priority; members just see it.
+  const editable = canEditTask(useViewer(), task)
+  if (!editable) return <PriorityLabel priority={task.priority} />
   return (
     <div onClick={(e) => e.stopPropagation()}>
       <Select
@@ -99,7 +101,6 @@ export function TasksTable({
     <Table className="table-fixed sm:min-w-[760px]">
       <TableHeader>
         <TableRow className="border-b border-border hover:bg-transparent">
-          <TableHead className="eyebrow w-16 sm:w-20">{t("tasks.columns.id")}</TableHead>
           <TableHead className="eyebrow">{t("tasks.columns.title")}</TableHead>
           <TableHead className="eyebrow w-28 sm:w-36">{t("tasks.columns.status")}</TableHead>
           <TableHead className="eyebrow hidden w-32 sm:table-cell">
@@ -117,7 +118,7 @@ export function TasksTable({
         {loading && tasks.length === 0
           ? Array.from({ length: 6 }, (_, i) => (
               <TableRow key={i}>
-                {Array.from({ length: 6 }, (__, j) => (
+                {Array.from({ length: 5 }, (__, j) => (
                   <TableCell key={j} className="h-13">
                     <Skeleton className="h-4 w-full max-w-40" />
                   </TableCell>
@@ -127,7 +128,7 @@ export function TasksTable({
           : null}
         {!loading && tasks.length === 0 ? (
           <TableRow className="hover:bg-transparent">
-            <TableCell colSpan={6} className="h-40 text-center text-sm text-foreground-muted">
+            <TableCell colSpan={5} className="h-40 text-center text-sm text-foreground-muted">
               {empty}
             </TableCell>
           </TableRow>
@@ -144,17 +145,20 @@ export function TasksTable({
               }}
               className="cursor-pointer outline-none hover:bg-surface-muted focus-visible:bg-surface-muted"
             >
-              <TableCell className="h-13 font-mono text-xs text-foreground-muted">
-                {formatTaskRef(task.number)}
-              </TableCell>
-              <TableCell className="max-w-0">
+              <TableCell className="h-13 max-w-0">
                 <span
                   className={cn(
-                    "block truncate font-medium",
+                    "flex items-center gap-1.5 font-medium",
                     task.status === "cancelled" && "text-foreground-muted line-through",
                   )}
                 >
-                  {task.title}
+                  {task.private ? (
+                    <LockIcon
+                      className="size-3.5 shrink-0 text-foreground-muted"
+                      aria-label={t("tasks.privateBadge")}
+                    />
+                  ) : null}
+                  <span className="truncate">{task.title}</span>
                 </span>
                 {/* Mobile: due date moves under the title (its column is hidden). */}
                 {task.dueDate ? (

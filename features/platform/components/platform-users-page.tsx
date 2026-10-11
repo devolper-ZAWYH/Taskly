@@ -31,6 +31,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { toastManager } from "@/components/ui/toast"
+import { useEmailAvailable } from "@/features/notifications/hooks"
 import { PlatformUserSheet } from "@/features/platform/components/platform-user-sheet"
 import { useCreatePlatformUser, usePlatformUsers } from "@/features/platform/hooks/use-platform"
 import { useLocale } from "@/lib/i18n/locale-provider"
@@ -114,6 +115,11 @@ export function PlatformUsersPage(): React.ReactElement {
                         )}
                       >
                         <span className="truncate">{user.name}</span>
+                        {user.invitePending ? (
+                          <Badge variant="outline" className="h-4.5 px-1.5 text-[10px]">
+                            {t("users.invitePending")}
+                          </Badge>
+                        ) : null}
                         {user.isOperator ? (
                           <Badge className="h-4.5 border-transparent bg-foreground px-1.5 text-[10px] text-background">
                             {t("roles.operator")}
@@ -199,10 +205,14 @@ function PlatformUserCreateDialog({
 function PlatformUserCreateForm({ onDone }: { onDone: (id?: string) => void }): React.ReactElement {
   const { t, errorMessage } = useLocale()
   const createUser = useCreatePlatformUser()
+  const emailAvailable = useEmailAvailable().data === true
   const [name, setName] = React.useState("")
   const [email, setEmail] = React.useState("")
   const [password, setPassword] = React.useState("")
   const [isOperator, setIsOperator] = React.useState(false)
+  // Inviting by email is the default once the server can send it.
+  const [inviteChoice, setInvite] = React.useState<boolean | null>(null)
+  const invite = emailAvailable && (inviteChoice ?? true)
 
   return (
     <form
@@ -210,13 +220,16 @@ function PlatformUserCreateForm({ onDone }: { onDone: (id?: string) => void }): 
       onSubmit={(e) => {
         e.preventDefault()
         createUser.mutate(
-          { name, email, password, isOperator },
+          { name, email, password: invite ? "" : password, isOperator, invite },
           {
             onSuccess: (user) => {
-              toastManager.add({
-                type: "success",
-                title: t("users.create.created", { name: user.name }),
-              })
+              toastManager.add(
+                !invite
+                  ? { type: "success", title: t("users.create.created", { name: user.name }) }
+                  : user.invited
+                    ? { type: "success", title: t("platform.userInvited", { email: user.email }) }
+                    : { type: "error", title: t("platform.inviteFailed", { name: user.name }) },
+              )
               onDone(user.id)
             },
           },
@@ -247,13 +260,26 @@ function PlatformUserCreateForm({ onDone }: { onDone: (id?: string) => void }): 
               onChange={(e) => setEmail(e.target.value)}
             />
           </FormRow>
-          <FormRow
-            label={t("users.form.password")}
-            htmlFor="p-user-password"
-            hint={t("users.form.passwordHint")}
-          >
-            <PasswordInput id="p-user-password" value={password} onChange={setPassword} />
-          </FormRow>
+          {emailAvailable ? (
+            <label className="flex cursor-pointer items-start justify-between gap-4 rounded-md border p-3">
+              <span>
+                <span className="block text-sm font-medium">{t("platform.inviteByEmail")}</span>
+                <span className="block text-xs text-foreground-muted">
+                  {t("platform.inviteByEmailHint")}
+                </span>
+              </span>
+              <Switch checked={invite} onCheckedChange={setInvite} data-testid="invite-by-email" />
+            </label>
+          ) : null}
+          {!invite ? (
+            <FormRow
+              label={t("users.form.password")}
+              htmlFor="p-user-password"
+              hint={t("users.form.passwordHint")}
+            >
+              <PasswordInput id="p-user-password" value={password} onChange={setPassword} />
+            </FormRow>
+          ) : null}
           <label className="flex cursor-pointer items-start justify-between gap-4 rounded-md border p-3">
             <span>
               <span className="block text-sm font-medium">{t("roles.operator")}</span>

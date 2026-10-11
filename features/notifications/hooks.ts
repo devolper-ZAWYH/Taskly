@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import * as React from "react"
 import {
+  getEmailAvailable,
   getNotificationPrefs,
   listNotifications,
   markNotificationsRead,
@@ -45,6 +46,15 @@ export function useMarkRead() {
 
 export function useNotificationPrefs() {
   return useQuery({ queryKey: [...NOTIFICATIONS_KEY, "prefs"], queryFn: getNotificationPrefs })
+}
+
+/** Whether the server can send email; the Email switches stay off without it. */
+export function useEmailAvailable() {
+  return useQuery({
+    queryKey: [...NOTIFICATIONS_KEY, "email-available"],
+    queryFn: getEmailAvailable,
+    staleTime: Infinity,
+  })
 }
 
 export function useSetNotificationPref() {

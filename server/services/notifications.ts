@@ -1,7 +1,8 @@
 /**
- * Notifications: in-app (the bell list) and Web Push, filtered by each
- * recipient's preferences. Events store structured data; the text is rendered
- * when read, in the reader's current language.
+ * Notifications: in-app (the bell list), Web Push and email, filtered by each
+ * recipient's preferences (email is off unless they turn it on). Events store
+ * structured data; the text is rendered when read, in the reader's current
+ * language.
  */
 import { AppError } from "@/lib/api/core"
 import {
@@ -18,7 +19,10 @@ import en from "@/messages/en"
 import { requireUser, type Ctx } from "@/server/context"
 import { newId } from "@/server/crypto"
 import { all, first, nowIso, run } from "@/server/db"
+import { mailConfigured, sendMail } from "@/server/mail/send"
+import { isolate, notificationMail } from "@/server/mail/templates"
 import { sendPushes } from "@/server/push"
+import { appOrigin, appUrl, pushKeys, type PushKeys } from "@/server/settings"
 import { bool, isObject, oneOf, str } from "@/server/validate"
 
 /** Every event, and the preference group that controls it. */
@@ -30,14 +34,17 @@ const EVENT_KIND = {
   meeting_updated: "meeting_changed",
   meeting_cancelled: "meeting_changed",
   workspace_added: "workspace_added",
+  workspace_invited: "workspace_added",
+  workspace_invite_accepted: "workspace_added",
+  workspace_invite_declined: "workspace_added",
   task_due_today: "task_reminders",
   task_due_tomorrow: "task_reminders",
   task_overdue: "task_reminders",
   google_change_reverted: "google_sync",
-  google_task_moved: "google_sync",
   google_event_moved: "google_sync",
   google_item_restored: "google_sync",
   google_reconnect: "google_sync",
+  google_sync_failed: "google_sync",
 } as const satisfies Record<string, NotificationKind>
 
 export type NotificationEvent = keyof typeof EVENT_KIND
@@ -45,7 +52,6 @@ export type NotificationEvent = keyof typeof EVENT_KIND
 type EventData = {
   actor: string
   workspace?: string
-  ref?: string
   title?: string
   status?: TaskStatus
   date?: string
@@ -70,6 +76,7 @@ export async function notify(
     accountId,
     data,
     link,
+    email: emailChannel = true,
   }: {
     recipients: string[]
     actorId: string
@@ -77,15 +84,22 @@ export async function notify(
     accountId: string | null
     data: EventData
     link: string | null
+    /** False when the caller sends its own email (an invitation that needs an answer). */
+    email?: boolean
   },
 ): Promise<void> {
   const ids = [...new Set(recipients)].filter((id) => id && id !== actorId)
   if (ids.length === 0) return
   const kind = EVENT_KIND[event]
 
-  const rows = await all<{ id: string; in_app: number | null; push: number | null }>(
+  const rows = await all<{
+    id: string
+    in_app: number | null
+    push: number | null
+    email: number | null
+  }>(
     ctx.db,
-    `SELECT u.id, p.in_app, p.push FROM users u
+    `SELECT u.id, p.in_app, p.push, p.email FROM users u
      LEFT JOIN notification_prefs p ON p.user_id = u.id AND p.type = ?
      WHERE u.active = 1 AND u.deleted_at IS NULL AND u.id IN (SELECT value FROM json_each(?))`,
     kind,
@@ -96,19 +110,35 @@ export async function notify(
   const payload = JSON.stringify({ event, ...data })
   const statements: D1PreparedStatement[] = []
   const pushUsers: string[] = []
+  const emailUsers: string[] = []
+  const canEmail = await mailConfigured(ctx)
 
   for (const row of rows) {
     const inApp = row.in_app !== 0
     const push = row.push !== 0
-    if (!inApp && !push) continue
+    // Email only when they switched it on (no row: off).
+    const email = row.email === 1 && canEmail && emailChannel
+    if (!inApp && !push && !email) continue
     if (push) pushUsers.push(row.id)
+    if (email) emailUsers.push(row.id)
     statements.push(
       ctx.db
         .prepare(
-          `INSERT INTO notifications (id, user_id, account_id, type, data, link, in_app, push, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO notifications (id, user_id, account_id, type, data, link, in_app, push, email, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
-        .bind(newId("n"), row.id, accountId, event, payload, link, inApp ? 1 : 0, push ? 1 : 0, now),
+        .bind(
+          newId("n"),
+          row.id,
+          accountId,
+          event,
+          payload,
+          link,
+          inApp ? 1 : 0,
+          push ? 1 : 0,
+          email ? 1 : 0,
+          now,
+        ),
       // Housekeeping: keep each person's list to the last couple of months.
       ctx.db
         .prepare("DELETE FROM notifications WHERE user_id = ? AND created_at < ?")
@@ -118,12 +148,55 @@ export async function notify(
   if (statements.length === 0) return
   await ctx.db.batch(statements)
 
-  if (pushUsers.length > 0 && ctx.env.VAPID_PRIVATE_KEY) {
-    ctx.waitUntil(deliverPush(ctx, pushUsers))
+  const keys = pushUsers.length > 0 ? await pushKeys(ctx) : null
+  if (keys) ctx.waitUntil(deliverPush(ctx, pushUsers, keys))
+  if (emailUsers.length > 0) {
+    ctx.waitUntil(deliverEmail(ctx, emailUsers, accountId, payload, link).catch(logEmailError))
   }
 }
 
-async function deliverPush(ctx: Ctx, userIds: string[]): Promise<void> {
+/** One email per person, in their language first, with a link back to the item. */
+async function deliverEmail(
+  ctx: Ctx,
+  userIds: string[],
+  accountId: string | null,
+  payload: string,
+  link: string | null,
+): Promise<void> {
+  // To the address this workspace knows them by, else their primary.
+  const users = await all<{ email: string; name: string; locale: string }>(
+    ctx.db,
+    `SELECT u.name, u.locale, COALESCE(
+       (SELECT ms.email FROM memberships ms WHERE ms.user_id = u.id AND ms.account_id = ?),
+       u.email) AS email
+     FROM users u WHERE u.id IN (SELECT value FROM json_each(?))`,
+    accountId,
+    JSON.stringify(userIds),
+  )
+  const url = link ? await appUrl(ctx, link) : null
+  const settingsUrl = await appUrl(ctx, "/settings")
+  const origin = await appOrigin(ctx)
+  // Every email carries both languages; the recipient's comes first.
+  const text = { en: render("en", payload), ar: render("ar", payload) }
+  await sendMail(
+    ctx,
+    users.map((user) => {
+      const locale: Locale = user.locale === "ar" ? "ar" : "en"
+      return {
+        to: { name: user.name, email: user.email },
+        mail: notificationMail(locale, { text, url, settingsUrl, origin }),
+        // Tells mail servers and autoresponders this was sent by the app.
+        headers: { "Auto-Submitted": "auto-generated" },
+      }
+    }),
+  )
+}
+
+function logEmailError(error: unknown): void {
+  console.error("notification email failed", error)
+}
+
+async function deliverPush(ctx: Ctx, userIds: string[], keys: PushKeys): Promise<void> {
   const subs = await all<{ endpoint: string }>(
     ctx.db,
     "SELECT endpoint FROM push_subscriptions WHERE user_id IN (SELECT value FROM json_each(?))",
@@ -131,11 +204,7 @@ async function deliverPush(ctx: Ctx, userIds: string[]): Promise<void> {
   )
   const gone = await sendPushes(
     subs.map((s) => s.endpoint),
-    {
-      publicKey: ctx.env.VAPID_PUBLIC_KEY,
-      privateKey: ctx.env.VAPID_PRIVATE_KEY,
-      subject: ctx.env.VAPID_SUBJECT,
-    },
+    keys,
   )
   if (gone.length > 0) {
     await run(
@@ -170,11 +239,11 @@ function render(locale: Locale, raw: string): string {
         new Date(`${data.date}T00:00:00`),
       )
     : ""
+  // Typed names and titles keep their own direction inside the other language's sentence.
   const vars: Record<string, string> = {
-    actor: data.actor ?? "",
-    workspace: data.workspace ?? "",
-    ref: data.ref ?? "",
-    title: data.title ?? "",
+    actor: isolate(data.actor ?? ""),
+    workspace: isolate(data.workspace ?? ""),
+    title: isolate(data.title ?? ""),
     status: data.status ? dict.tasks.status[data.status] : "",
     date: data.time ? `${date}, ${data.time}` : date,
     // Reminders: " at 14:30" / " الساعة 14:30" when the due date has a time.
@@ -283,15 +352,19 @@ export async function latestPushNotification(ctx: Ctx): Promise<AppNotification 
 
 export async function getNotificationPrefs(ctx: Ctx): Promise<NotificationPrefs> {
   const me = await requireUser(ctx)
-  const rows = await all<{ type: string; in_app: number; push: number }>(
+  const rows = await all<{ type: string; in_app: number; push: number; email: number }>(
     ctx.db,
-    "SELECT type, in_app, push FROM notification_prefs WHERE user_id = ?",
+    "SELECT type, in_app, push, email FROM notification_prefs WHERE user_id = ?",
     me.id,
   )
   const prefs = {} as NotificationPrefs
   for (const kind of NOTIFICATION_KINDS) {
     const row = rows.find((r) => r.type === kind)
-    prefs[kind] = { inApp: row ? row.in_app === 1 : true, push: row ? row.push === 1 : true }
+    prefs[kind] = {
+      inApp: row ? row.in_app === 1 : true,
+      push: row ? row.push === 1 : true,
+      email: row ? row.email === 1 : false,
+    }
   }
   return prefs
 }
@@ -304,8 +377,13 @@ export async function setNotificationPref(
 ): Promise<NotificationPrefs> {
   const me = await requireUser(ctx)
   const type = oneOf(kind, NOTIFICATION_KINDS)
-  const column = oneOf<NotificationChannel>(channel, ["inApp", "push"]) === "inApp" ? "in_app" : "push"
+  const column = { inApp: "in_app", push: "push", email: "email" }[
+    oneOf<NotificationChannel>(channel, ["inApp", "push", "email"])
+  ]
   const value = bool(enabled) ? 1 : 0
+  if (column === "email" && value === 1 && !(await mailConfigured(ctx))) {
+    throw new AppError("mailNotConfigured")
+  }
   await run(
     ctx.db,
     `INSERT INTO notification_prefs (user_id, type, ${column}) VALUES (?, ?, ?)
@@ -317,10 +395,16 @@ export async function setNotificationPref(
   return getNotificationPrefs(ctx)
 }
 
+/** Whether this server can send email (the Settings "Email" column). */
+export async function getEmailAvailable(ctx: Ctx): Promise<boolean> {
+  await requireUser(ctx)
+  return mailConfigured(ctx)
+}
+
 /** The public VAPID key the browser needs to subscribe this device. */
 export async function getPushPublicKey(ctx: Ctx): Promise<string | null> {
   await requireUser(ctx)
-  return ctx.env.VAPID_PRIVATE_KEY ? ctx.env.VAPID_PUBLIC_KEY : null
+  return (await pushKeys(ctx))?.publicKey ?? null
 }
 
 /** Remember this device's push endpoint for the signed-in person. */

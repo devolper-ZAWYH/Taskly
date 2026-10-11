@@ -52,6 +52,8 @@ export type LinkRow = {
   /** JSON of the two-way fields as both sides last agreed. */
   base: string
   footer: string
+  /** Meetings: the time zone the copy was last written in. */
+  zone: string | null
   synced_at: string
 }
 
@@ -146,14 +148,17 @@ export function linkByGoogleId(
 }
 
 /** Insert or replace a link, and note that this person just synced. */
-export async function saveLink(db: D1Database, link: Omit<LinkRow, "synced_at">): Promise<void> {
+export async function saveLink(
+  db: D1Database,
+  link: Omit<LinkRow, "synced_at" | "zone"> & { zone?: string | null },
+): Promise<void> {
   const now = nowIso()
   await db.batch([
     db
       .prepare(
         `INSERT OR REPLACE INTO google_links
-           (kind, entity_id, user_id, account_id, container_id, google_id, etag, base, footer, synced_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (kind, entity_id, user_id, account_id, container_id, google_id, etag, base, footer, zone, synced_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         link.kind,
@@ -165,6 +170,7 @@ export async function saveLink(db: D1Database, link: Omit<LinkRow, "synced_at">)
         link.etag,
         link.base,
         link.footer,
+        link.zone ?? null,
         now,
       ),
     db.prepare("UPDATE google_connections SET last_sync_at = ? WHERE user_id = ?").bind(now, link.user_id),

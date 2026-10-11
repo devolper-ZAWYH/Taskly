@@ -18,6 +18,7 @@ import { Switch } from "@/components/ui/switch"
 import { toastManager } from "@/components/ui/toast"
 import { LogoField } from "@/features/platform/components/logo-field"
 import { AttachRow, MembershipRow } from "@/features/platform/components/membership-controls"
+import { TimeZoneField } from "@/features/platform/components/time-zone-field"
 import {
   useAccount,
   useAccountMembers,
@@ -129,6 +130,7 @@ function AccountDetail({ account }: { account: AccountSummary }): React.ReactEle
               </Button>
             </form>
             <LogoField account={account} />
+            <TimeZoneField account={account} />
             <div className="flex items-start justify-between gap-4 rounded-md border p-3">
               <div>
                 <p className="text-sm font-medium">{t("common.active")}</p>

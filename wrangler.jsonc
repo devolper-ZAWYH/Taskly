@@ -23,14 +23,10 @@
       "migrations_dir": "migrations"
     }
   ],
-  "vars": {
-    // Web push (VAPID). The matching private key is the VAPID_PRIVATE_KEY secret.
-    "VAPID_PUBLIC_KEY": "BKbT1ysPn04TCWsJHyp22OeMJk_ZWHG52FEYafDGdcsovkHOIQgclSeDYMne64LZJ_S4neBAG2Y-OfGLHKnGviQ",
-    "VAPID_SUBJECT": "https://zawyh.thouseefhamza-codes.workers.dev",
-    // Public URL of the app: Google Calendar push notifications are sent here.
-    // Secrets: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_TOKEN_KEY (see .dev.vars.example).
-    "APP_ORIGIN": "https://zawyh.thouseefhamza-codes.workers.dev"
-  },
+  // No per-deployment vars: the app's address, email, the Google client and
+  // the push keys are set in Platform → Settings. The one secret is
+  // ENCRYPTION_KEY (`wrangler secret put ENCRYPTION_KEY`, see .dev.vars.example).
+
   // Hourly: each person gets reminders at 08:00 in their own time zone.
   // Every 5 minutes: Google sync (poll Google Tasks, retries, channel renewal).
   "triggers": {

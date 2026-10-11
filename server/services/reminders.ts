@@ -13,7 +13,6 @@ const SEND_AT_HOUR = 8
 type Candidate = {
   task_id: string
   account_id: string
-  number: number
   title: string
   due_date: string
   due_time: string
@@ -71,7 +70,7 @@ export async function runDueReminders(ctx: Ctx, at: Date): Promise<number> {
     // filtered by the INSERT OR IGNORE below, per kind.)
     const rows = await all<Candidate>(
       ctx.db,
-      `SELECT t.id AS task_id, t.account_id, t.number, t.title, t.due_date, t.due_time,
+      `SELECT t.id AS task_id, t.account_id, t.title, t.due_date, t.due_time,
               ta.user_id, a.name AS workspace
        FROM tasks t
        JOIN task_assignees ta ON ta.task_id = t.id
@@ -123,12 +122,11 @@ export async function runDueReminders(ctx: Ctx, at: Date): Promise<number> {
         data: {
           actor: "",
           workspace: row.workspace,
-          ref: `T-${row.number}`,
           title: row.title,
           date: row.due_date,
           time: event === "task_overdue" ? undefined : row.due_time || undefined,
         },
-        link: `/w/${row.account_id}/tasks?task=T-${row.number}`,
+        link: `/w/${row.account_id}/tasks?task=${row.task_id}`,
       })
       sent += recipients.length
     }

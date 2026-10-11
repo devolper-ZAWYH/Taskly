@@ -47,6 +47,8 @@ export type UserRow = {
   avatar_updated_at: string | null
   timezone: string | null
   calendar_view: string
+  /** Set until someone invited by email chooses a password. */
+  invited_at: string | null
 }
 
 export type AccountRow = {
@@ -55,6 +57,7 @@ export type AccountRow = {
   active: number
   created_at: string
   logo_updated_at: string | null
+  timezone: string | null
 }
 
 export type TaskRow = {
@@ -71,6 +74,8 @@ export type TaskRow = {
   due_time: string
   created_by_id: string | null
   meeting_id: string | null
+  private: number
+  google_sync: number
   completed_at: string | null
   created_at: string
   updated_at: string
@@ -103,7 +108,8 @@ export const TASK_COLUMNS = `t.*, (SELECT json_group_array(user_id) FROM task_as
 export const MEETING_COLUMNS = `m.*, (SELECT json_group_array(user_id) FROM meeting_attendees WHERE meeting_id = m.id) AS attendee_ids`
 
 /** Select list for a member: `users u JOIN memberships ms`. */
-export const MEMBER_COLUMNS = `u.id, u.name, u.email, u.is_operator, u.active, u.locale, u.created_at, u.avatar_updated_at, u.timezone, u.calendar_view, ms.role, ms.id AS membership_id`
+/** A member's email is the address their workspace knows them by (else their primary). */
+export const MEMBER_COLUMNS = `u.id, u.name, COALESCE(ms.email, u.email) AS email, u.is_operator, u.active, u.locale, u.created_at, u.avatar_updated_at, u.timezone, u.calendar_view, u.invited_at, ms.role, ms.id AS membership_id`
 
 export function toUser(row: UserRow): User & { passwordHash: string } {
   return {
@@ -118,6 +124,7 @@ export function toUser(row: UserRow): User & { passwordHash: string } {
     avatarUrl: avatarUrl(row.id, row.avatar_updated_at),
     timeZone: row.timezone,
     calendarView: row.calendar_view === "list" ? "list" : "calendar",
+    invitePending: row.invited_at !== null,
   }
 }
 
@@ -133,6 +140,7 @@ export function toPublicUser(row: Omit<UserRow, "password_hash">): PublicUser {
     avatarUrl: avatarUrl(row.id, row.avatar_updated_at),
     timeZone: row.timezone,
     calendarView: row.calendar_view === "list" ? "list" : "calendar",
+    invitePending: row.invited_at !== null,
   }
 }
 
@@ -151,6 +159,7 @@ export function toAccount(row: AccountRow): Account {
     active: row.active === 1,
     createdAt: row.created_at,
     logoUrl: logoUrl(row.id, row.logo_updated_at),
+    timeZone: row.timezone,
   }
 }
 
@@ -158,7 +167,6 @@ export function toTask(row: TaskRow): Task {
   return {
     id: row.id,
     accountId: row.account_id,
-    number: row.number,
     title: row.title,
     description: row.description,
     status: row.status,
@@ -170,6 +178,8 @@ export function toTask(row: TaskRow): Task {
     assigneeIds: JSON.parse(row.assignee_ids) as string[],
     createdById: row.created_by_id,
     meetingId: row.meeting_id,
+    private: row.private === 1,
+    googleSync: row.google_sync === 1,
     completedAt: row.completed_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

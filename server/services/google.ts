@@ -8,27 +8,29 @@ import type {
   GoogleContainer,
   GoogleContainerKind,
   GoogleStatus,
+  GoogleSyncHealth,
   PersonalEvent,
   PersonalEventInput,
   PersonalTask,
   PersonalTaskInput,
 } from "@/lib/types"
-import { requireUser, type Ctx } from "@/server/context"
+import { requireOperator, requireUser, type Ctx } from "@/server/context"
 import { all, nowIso, run } from "@/server/db"
 import { googleFor } from "@/server/google/client"
 import { googleConfigured } from "@/server/google/config"
 import { purgeUser, refreshPersonalContainers } from "@/server/google/containers"
+import { failedJobCount, retryFailedJobs, syncHealth } from "@/server/google/health"
 import * as personal from "@/server/google/personal"
 import { viaGoogle } from "@/server/google/personal"
 import { drainJobs, enqueue } from "@/server/google/queue"
 import { containersOf, getConnection, toContainer, type ContainerRow } from "@/server/google/store"
-import { bool, date, isObject, oneOf, str, time } from "@/server/validate"
+import { bool, date, isObject, oneOf, str, time, timeZone } from "@/server/validate"
 
 const KINDS = ["tasklist", "calendar"] as const satisfies readonly GoogleContainerKind[]
 
 export async function getGoogleStatus(ctx: Ctx): Promise<GoogleStatus> {
   const me = await requireUser(ctx)
-  const configured = googleConfigured(ctx.env)
+  const configured = await googleConfigured(ctx)
   const row = configured ? await getConnection(ctx.db, me.id) : null
   return {
     configured,
@@ -37,13 +39,14 @@ export async function getGoogleStatus(ctx: Ctx): Promise<GoogleStatus> {
     state: row?.state ?? null,
     lastError: row?.last_error ?? null,
     lastSyncAt: row?.last_sync_at ?? null,
+    failedJobs: row ? await failedJobCount(ctx, me.id) : 0,
   }
 }
 
 /** The signed-in person, who must have connected Google (and not lost access). */
 async function requireConnected(ctx: Ctx): Promise<string> {
   const me = await requireUser(ctx)
-  if (!googleConfigured(ctx.env)) throw new AppError("googleNotConfigured")
+  if (!(await googleConfigured(ctx))) throw new AppError("googleNotConfigured")
   const row = await getConnection(ctx.db, me.id)
   if (!row) throw new AppError("googleNotConnected")
   if (row.state === "revoked") throw new AppError("googleReconnect")
@@ -53,12 +56,14 @@ async function requireConnected(ctx: Ctx): Promise<string> {
 /**
  * Pull changes from their workspace lists and calendars now (the app calls
  * this when it opens, and from "Sync now"), then run their pending work.
+ * `retryFailed` ("Sync now"): also retry their work that had stopped retrying.
  */
-export async function syncGoogleNow(ctx: Ctx): Promise<GoogleStatus> {
+export async function syncGoogleNow(ctx: Ctx, retryFailed?: unknown): Promise<GoogleStatus> {
   const me = await requireUser(ctx)
-  const row = googleConfigured(ctx.env) ? await getConnection(ctx.db, me.id) : null
+  const row = (await googleConfigured(ctx)) ? await getConnection(ctx.db, me.id) : null
   if (row?.state === "active") {
     await run(ctx.db, "UPDATE google_connections SET last_seen_at = ? WHERE user_id = ?", nowIso(), me.id)
+    if (retryFailed !== undefined && bool(retryFailed)) await retryFailedJobs(ctx, me.id)
     const containers = await all<ContainerRow>(
       ctx.db,
       "SELECT * FROM google_containers WHERE user_id = ? AND account_id IS NOT NULL",
@@ -175,16 +180,6 @@ export async function deletePersonalTask(ctx: Ctx, tasklistId: unknown, id: unkn
 
 // ---- Personal events -------------------------------------------------------------
 
-function validZone(value: unknown): string {
-  const zone = str(value, 64)
-  try {
-    new Intl.DateTimeFormat("en", { timeZone: zone })
-    return zone
-  } catch {
-    throw new AppError("badRequest")
-  }
-}
-
 function personalEventInput(value: unknown): PersonalEventInput {
   if (!isObject(value)) throw new AppError("badRequest")
   const allDay = bool(value.allDay)
@@ -196,7 +191,7 @@ function personalEventInput(value: unknown): PersonalEventInput {
     startTime: allDay ? "" : time(value.startTime, false),
     endTime: allDay ? "" : time(value.endTime, false),
     allDay,
-    timeZone: validZone(value.timeZone),
+    timeZone: timeZone(value.timeZone),
   }
   if (!input.title) throw new AppError("titleRequired")
   if (!allDay && input.endTime <= input.startTime) throw new AppError("invalidTimeRange")
@@ -208,7 +203,7 @@ export async function listPersonalEvents(ctx: Ctx, params: unknown): Promise<Per
   if (!isObject(params)) throw new AppError("badRequest")
   const range = { from: date(params.from, false), to: date(params.to, false) }
   if (range.to < range.from) throw new AppError("badRequest")
-  validZone(params.timeZone)
+  timeZone(params.timeZone)
   return viaGoogle(() => personal.listEvents(ctx, userId, range))
 }
 
@@ -238,4 +233,19 @@ export async function updatePersonalEvent(
 export async function deletePersonalEvent(ctx: Ctx, calendarId: unknown, id: unknown): Promise<void> {
   const userId = await requireConnected(ctx)
   return viaGoogle(() => personal.deleteEvent(ctx, userId, listId(calendarId), str(id, 1024)))
+}
+
+// ---- Operators -------------------------------------------------------------------
+
+/** How sync is doing across the platform: failing jobs and people who must reconnect. */
+export async function getGoogleSyncHealth(ctx: Ctx): Promise<GoogleSyncHealth> {
+  await requireOperator(ctx)
+  return { configured: await googleConfigured(ctx), ...(await syncHealth(ctx)) }
+}
+
+/** Put every failed job back in the queue and run a first batch now. */
+export async function retryFailedGoogleJobs(ctx: Ctx): Promise<GoogleSyncHealth> {
+  await requireOperator(ctx)
+  if (await retryFailedJobs(ctx)) await drainJobs(ctx, { limit: 25, budgetMs: 15_000 })
+  return getGoogleSyncHealth(ctx)
 }

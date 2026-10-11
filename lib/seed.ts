@@ -9,7 +9,9 @@ import type {
 } from "@/lib/types"
 
 /** Seed people carry a plain password; the seed script hashes it. */
-export type SeedUser = Omit<User, "avatarUrl" | "timeZone" | "calendarView"> & { password: string }
+export type SeedUser = Omit<User, "avatarUrl" | "timeZone" | "calendarView" | "invitePending"> & {
+  password: string
+}
 
 export const DEMO_ADMIN = { email: "admin@example.com", password: "admin1234" }
 export const DEMO_MEMBER = { email: "omar@example.com", password: "member1234" }
@@ -204,15 +206,21 @@ const ROWS: SeedRow[] = [
   ["Translate service catalogue to Arabic", "completed", "medium", -4, "", ["u-sara"], "u-admin"],
 ]
 
+/** Private tasks: [title, priority, due (days from today), owner]. */
+const PRIVATE_ROWS: [string, TaskPriority, number | null, string][] = [
+  ["Prepare my quarterly self-review", "medium", 5, "u-admin"],
+  ["Book dentist appointment", "none", 2, "u-omar"],
+  ["Read the new travel policy", "low", null, "u-omar"],
+]
+
 export function buildSeedTasks(): Task[] {
   const created = new Date()
-  return ROWS.map((row, index) => {
+  const shared = ROWS.map((row, index): Task => {
     const [title, status, priority, due, dueTime, assigneeIds, creator, description] = row
     const createdAt = new Date(created.getTime() - (ROWS.length - index) * 3_600_000).toISOString()
     return {
       id: `t-${index + 1}`,
       accountId: ACME,
-      number: index + 1,
       title,
       description: description ?? "",
       status,
@@ -224,11 +232,35 @@ export function buildSeedTasks(): Task[] {
       assigneeIds,
       createdById: creator,
       meetingId: TASK_MEETING[index + 1] ?? null,
+      private: false,
+      googleSync: false,
       completedAt: status === "completed" ? createdAt : null,
       createdAt,
       updatedAt: createdAt,
     }
   })
+  const at = created.toISOString()
+  const own = PRIVATE_ROWS.map(([title, priority, due, owner], i): Task => ({
+    id: `t-p${i + 1}`,
+    accountId: ACME,
+    title,
+    description: "",
+    status: "open",
+    priority,
+    startDate: "",
+    startTime: "",
+    dueDate: due === null ? "" : isoDay(due),
+    dueTime: "",
+    assigneeIds: [owner],
+    createdById: owner,
+    meetingId: null,
+    private: true,
+    googleSync: false,
+    completedAt: null,
+    createdAt: at,
+    updatedAt: at,
+  }))
+  return [...shared, ...own]
 }
 
 /** `YYYY-MM-DD` for a day in a week relative to the current one (weeks start Sunday). */
@@ -392,8 +424,8 @@ export function buildSeedMeetings(): Meeting[] {
 }
 
 export const SEED_ACCOUNTS: Account[] = [
-  { id: ACME, name: "Acme Consulting", active: true, createdAt: now, logoUrl: null },
-  { id: NORTHWIND, name: "Northwind Trading", active: true, createdAt: now, logoUrl: null },
+  { id: ACME, name: "Acme Consulting", active: true, createdAt: now, logoUrl: null, timeZone: null },
+  { id: NORTHWIND, name: "Northwind Trading", active: true, createdAt: now, logoUrl: null, timeZone: null },
 ]
 
 export const SEED_MEMBERSHIPS: Membership[] = [
@@ -419,7 +451,6 @@ export function buildNorthwindTasks(): Task[] {
   return NORTHWIND_TASKS.map(([title, status, priority, due, assigneeIds], i) => ({
     id: `nw-t-${i + 1}`,
     accountId: NORTHWIND,
-    number: i + 1,
     title,
     description: "",
     status,
@@ -431,6 +462,8 @@ export function buildNorthwindTasks(): Task[] {
     assigneeIds,
     createdById: "u-sara",
     meetingId: i === 1 ? "nw-m-1" : null,
+    private: false,
+    googleSync: false,
     completedAt: status === "completed" ? at : null,
     createdAt: at,
     updatedAt: at,

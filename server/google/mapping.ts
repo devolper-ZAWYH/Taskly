@@ -113,8 +113,6 @@ const clip = (value: string, max: number) => (value.length > max ? value.slice(0
 
 // ---- Tasks -------------------------------------------------------------------
 
-const REF_PREFIX = /^T-\d+\s*·\s*/
-
 export function taskFields(task: Task): TaskFields {
   return {
     title: task.title,
@@ -126,7 +124,7 @@ export function taskFields(task: Task): TaskFields {
 
 export function googleTaskFields(task: GoogleTask): TaskFields {
   return {
-    title: clip((task.title ?? "").replace(REF_PREFIX, "").trim(), MAX_TITLE),
+    title: clip((task.title ?? "").trim(), MAX_TITLE),
     description: clip(noteBody(task.notes), MAX_TEXT),
     dueDate: task.due ? task.due.slice(0, 10) : "",
     done: task.status === "completed",
@@ -134,14 +132,25 @@ export function googleTaskFields(task: GoogleTask): TaskFields {
 }
 
 /** Request body for inserting or patching the Google copy of a task. */
-export function googleTaskBody(number: number, fields: TaskFields, footer: string[]) {
+export function googleTaskBody(fields: TaskFields, footer: string[]) {
   return {
-    title: `T-${number} · ${fields.title}`,
+    title: fields.title,
     notes: withFooter(fields.description, footer),
     due: fields.dueDate ? `${fields.dueDate}T00:00:00.000Z` : null,
     status: fields.done ? ("completed" as const) : ("needsAction" as const),
     ...(fields.done ? {} : { completed: null }),
   }
+}
+
+/**
+ * The Taskly task a Google copy belongs to, from the "Open in Taskly" link in
+ * its footer (`…/tasks?task=<id>`), or null when it isn't one of Taskly's copies.
+ */
+export function footerTaskId(notes: string | undefined | null): string | null {
+  if (!notes) return null
+  const mark = notes.indexOf(FOOTER_MARK)
+  if (mark === -1) return null
+  return /\/tasks\?task=(t-[\w-]+)/.exec(notes.slice(mark))?.[1] ?? null
 }
 
 /** Taskly status after Google says done / not done. Reopening a completed task makes it open. */

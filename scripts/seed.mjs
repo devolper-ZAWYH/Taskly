@@ -63,8 +63,11 @@ for (const user of SEED_USERS) {
 }
 
 const tasks = [...buildSeedTasks(), ...buildNorthwindTasks()]
+// `tasks.number` is internal only (unique per workspace, never shown).
+const numbers = new Map()
+for (const t of tasks) numbers.set(t.id, tasks.filter((o) => o.accountId === t.accountId).indexOf(t) + 1)
 for (const account of SEED_ACCOUNTS) {
-  const counter = Math.max(0, ...tasks.filter((t) => t.accountId === account.id).map((t) => t.number))
+  const counter = tasks.filter((t) => t.accountId === account.id).length
   lines.push(
     insert("accounts", {
       id: account.id,
@@ -114,7 +117,7 @@ for (const t of tasks) {
     insert("tasks", {
       id: t.id,
       account_id: t.accountId,
-      number: t.number,
+      number: numbers.get(t.id),
       title: t.title,
       description: t.description,
       status: t.status,
@@ -125,6 +128,8 @@ for (const t of tasks) {
       due_time: t.dueTime,
       created_by_id: t.createdById,
       meeting_id: t.meetingId,
+      private: t.private ? 1 : 0,
+      google_sync: t.googleSync ? 1 : 0,
       completed_at: t.completedAt,
       created_at: t.createdAt,
       updated_at: t.updatedAt,

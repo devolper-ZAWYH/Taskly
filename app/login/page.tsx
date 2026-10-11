@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import * as React from "react"
 import { BrandMark } from "@/components/shell/brand"
@@ -63,6 +64,12 @@ export default function LoginPage() {
                 dir="ltr"
               />
             </FormRow>
+            <Link
+              href="/forgot-password"
+              className="-mt-3 self-end text-xs text-foreground-secondary underline-offset-2 hover:underline"
+            >
+              {t("login.forgot")}
+            </Link>
             <FormError message={loginMutation.error ? errorMessage(loginMutation.error) : null} />
             <Button type="submit" size="lg" loading={loginMutation.isPending} className="w-full">
               {t("login.submit")}

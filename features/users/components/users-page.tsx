@@ -1,6 +1,6 @@
 "use client"
 
-import { PlusIcon, UserMinusIcon } from "lucide-react"
+import { MailIcon, PlusIcon, UserMinusIcon } from "lucide-react"
 import { useRouter } from "next/navigation"
 import * as React from "react"
 import { ConfirmDialog } from "@/components/shell/confirm-dialog"
@@ -8,6 +8,7 @@ import { ListPagination } from "@/components/shell/list-pagination"
 import { PageHeader } from "@/components/shell/page-header"
 import { SearchInput } from "@/components/shell/search-input"
 import { UserAvatar } from "@/components/shell/user-avatar"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -22,10 +23,12 @@ import { toastManager } from "@/components/ui/toast"
 import { useCurrentUser } from "@/features/auth/use-auth"
 import { useWorkspace, useWorkspacePath } from "@/features/workspace/workspace-context"
 import { RoleSelect } from "@/features/users/components/role-select"
+import { PendingInvitations } from "@/features/users/components/pending-invitations"
 import { UserCreateDialog } from "@/features/users/components/user-create-dialog"
 import {
   USERS_PAGE_SIZE,
   useRemoveMember,
+  useResendInvite,
   useUpdateMember,
   useUsers,
 } from "@/features/users/hooks/use-users"
@@ -45,6 +48,7 @@ export function UsersPage(): React.ReactElement | null {
   const wsPath = useWorkspacePath()
   const updateMember = useUpdateMember()
   const removeMember = useRemoveMember()
+  const resendInvite = useResendInvite()
 
   const [search, setSearch] = React.useState("")
   const [page, setPage] = React.useState(1)
@@ -97,6 +101,8 @@ export function UsersPage(): React.ReactElement | null {
         placeholder={t("users.searchPlaceholder")}
       />
 
+      <PendingInvitations />
+
       <div>
         <div className="overflow-x-auto border-t">
           <Table className="table-fixed">
@@ -139,12 +145,21 @@ export function UsersPage(): React.ReactElement | null {
                       <span className="flex items-center gap-3">
                         <UserAvatar name={member.name} src={member.avatarUrl} />
                         <span className="min-w-0">
-                          <span className="block truncate font-medium">
-                            {member.name}
+                          <span className="flex items-center gap-2 truncate font-medium">
+                            <span className="truncate">{member.name}</span>
                             {isMe ? (
-                              <span className="ms-1.5 text-xs font-normal text-foreground-muted">
+                              <span className="text-xs font-normal text-foreground-muted">
                                 ({t("common.you")})
                               </span>
+                            ) : null}
+                            {member.invitePending ? (
+                              <Badge
+                                variant="outline"
+                                className="h-4.5 px-1.5 text-[10px]"
+                                data-testid="invite-pending"
+                              >
+                                {t("users.invitePending")}
+                              </Badge>
                             ) : null}
                           </span>
                           {/* Mobile: email moves under the name (its column is hidden). */}
@@ -166,6 +181,28 @@ export function UsersPage(): React.ReactElement | null {
                       />
                     </TableCell>
                     <TableCell className="text-end">
+                      {member.invitePending ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          aria-label={`${t("users.resendInvite")} ${member.name}`}
+                          loading={resendInvite.isPending && resendInvite.variables === member.id}
+                          onClick={() =>
+                            resendInvite.mutate(member.id, {
+                              onSuccess: () =>
+                                toastManager.add({
+                                  type: "success",
+                                  title: t("users.inviteResent", { email: member.email }),
+                                }),
+                              onError: (error) =>
+                                toastManager.add({ type: "error", title: errorMessage(error) }),
+                            })
+                          }
+                        >
+                          <MailIcon />
+                          <span className="max-sm:sr-only">{t("users.resendInvite")}</span>
+                        </Button>
+                      ) : null}
                       {isMe ? null : (
                         <Button
                           variant="ghost"

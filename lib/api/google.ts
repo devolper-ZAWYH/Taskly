@@ -3,6 +3,7 @@ import type {
   GoogleContainer,
   GoogleContainerKind,
   GoogleStatus,
+  GoogleSyncHealth,
   PersonalEvent,
   PersonalEventInput,
   PersonalTask,
@@ -18,8 +19,12 @@ export const GOOGLE_CONNECT_URL = "/api/google/connect"
 
 export const getGoogleStatus = (): Promise<GoogleStatus> => rpc("getGoogleStatus")
 
-/** Pull changes from Google now (also run when the app opens). */
-export const syncGoogleNow = (): Promise<GoogleStatus> => rpc("syncGoogleNow")
+/**
+ * Pull changes from Google now (also run when the app opens). `retryFailed`
+ * ("Sync now"): also retry work that had stopped retrying.
+ */
+export const syncGoogleNow = (retryFailed = false): Promise<GoogleStatus> =>
+  rpc("syncGoogleNow", retryFailed)
 
 /** Removes the "Taskly · …" lists and calendars from Google and forgets the account. */
 export const disconnectGoogle = (): Promise<void> => rpc("disconnectGoogle")
@@ -74,3 +79,9 @@ export const updatePersonalEvent = (
 
 export const deletePersonalEvent = (calendarId: string, id: string): Promise<void> =>
   rpc("deletePersonalEvent", calendarId, id)
+
+/** Operators: failing sync work and people who must reconnect. */
+export const getGoogleSyncHealth = (): Promise<GoogleSyncHealth> => rpc("getGoogleSyncHealth")
+
+/** Operators: put every failed sync job back in the queue. */
+export const retryFailedGoogleJobs = (): Promise<GoogleSyncHealth> => rpc("retryFailedGoogleJobs")

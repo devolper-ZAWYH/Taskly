@@ -1,8 +1,12 @@
 /**
- * Google endpoints, scopes, and whether this deployment can sync at all.
- * GOOGLE_API_ORIGIN / GOOGLE_OAUTH_ORIGIN point the app at a mock server in
- * tests (scripts/google-mock.mjs); they are unset in production.
+ * Google endpoints, scopes, and whether this deployment can sync at all (an
+ * OAuth client in Platform → Settings or the environment, plus ENCRYPTION_KEY
+ * for the stored tokens). GOOGLE_API_ORIGIN / GOOGLE_OAUTH_ORIGIN point the
+ * app at a mock server in tests (scripts/google-mock.mjs); they are unset in
+ * production.
  */
+import type { Ctx } from "@/server/context"
+import { appOrigin, encryptionKey, settingsOf } from "@/server/settings"
 
 /** Short-lived cookie between /api/google/connect and the callback: `<state>.<PKCE verifier>`. */
 export const OAUTH_COOKIE = "google_oauth"
@@ -22,8 +26,18 @@ export const SCOPES = [
 /** Sync can't work if the person unticks any of these on the consent screen. */
 export const REQUIRED_SCOPES = SCOPES.slice(2)
 
-export function googleConfigured(env: CloudflareEnv): boolean {
-  return Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET && env.GOOGLE_TOKEN_KEY)
+/** The OAuth client this deployment signs people in to Google with. */
+export type GoogleClient = { clientId: string; clientSecret: string }
+
+/** The OAuth client, or null when Google sync isn't set up. */
+export async function googleClient(ctx: Ctx): Promise<GoogleClient | null> {
+  const { values } = await settingsOf(ctx)
+  if (!values.google_client_id || !values.google_client_secret || !encryptionKey(ctx.env)) return null
+  return { clientId: values.google_client_id, clientSecret: values.google_client_secret }
+}
+
+export async function googleConfigured(ctx: Ctx): Promise<boolean> {
+  return (await googleClient(ctx)) !== null
 }
 
 export function apiOrigin(env: CloudflareEnv): string {
@@ -41,14 +55,9 @@ export function oauthEndpoints(env: CloudflareEnv) {
       }
 }
 
-/** A link into the app, for the footer Taskly writes into Google items. */
-export function appUrl(env: CloudflareEnv, path: string): string {
-  return `${(env.APP_ORIGIN || "").replace(/\/$/, "")}${path}`
-}
-
 /** Where Google Calendar sends push notifications, or null without a public https URL. */
-export function webhookUrl(env: CloudflareEnv): string | null {
-  const origin = env.APP_ORIGIN || ""
+export async function webhookUrl(ctx: Ctx): Promise<string | null> {
+  const origin = await appOrigin(ctx)
   if (!origin.startsWith("https://") || /localhost|127\.0\.0\.1/.test(origin)) return null
-  return appUrl(env, "/api/google/webhook")
+  return `${origin}/api/google/webhook`
 }

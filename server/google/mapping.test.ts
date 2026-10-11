@@ -3,6 +3,7 @@ import { test } from "node:test"
 import type { Meeting, Task } from "@/lib/types"
 import {
   eventFields,
+  footerTaskId,
   FOOTER_MARK,
   googleEventBody,
   googleTaskBody,
@@ -18,7 +19,6 @@ import {
 const task: Task = {
   id: "t-1",
   accountId: "acc",
-  number: 12,
   title: "Send the proposal",
   description: "Draft is in the shared folder.",
   status: "in_progress",
@@ -30,6 +30,8 @@ const task: Task = {
   assigneeIds: ["u-1"],
   createdById: "u-2",
   meetingId: null,
+  private: false,
+  googleSync: false,
   completedAt: null,
   createdAt: "2026-10-01T00:00:00.000Z",
   updatedAt: "2026-10-01T00:00:00.000Z",
@@ -52,14 +54,14 @@ const meeting: Meeting = {
 
 test("a task survives the round trip through its Google copy", () => {
   const fields = taskFields(task)
-  const body = googleTaskBody(task.number, fields, ["Due at 14:30", "Open in Taskly: https://x"])
-  assert.equal(body.title, "T-12 · Send the proposal")
+  const body = googleTaskBody(fields, ["Due at 14:30", "Open in Taskly: https://x"])
+  assert.equal(body.title, "Send the proposal")
   assert.equal(body.due, "2026-10-14T00:00:00.000Z")
   assert.equal(body.status, "needsAction")
   assert.deepEqual(googleTaskFields({ id: "g", ...body }), fields)
 })
 
-test("Google task without the T-n prefix, due or notes", () => {
+test("Google task without a due date or notes", () => {
   assert.deepEqual(googleTaskFields({ id: "g", title: "  Call Omar ", status: "completed" }), {
     title: "Call Omar",
     description: "",
@@ -120,4 +122,12 @@ test("wall clock follows the zone", () => {
     date: "2026-10-14",
     time: "02:30",
   })
+})
+
+test("a Google copy is traced back to its task by the footer link", () => {
+  const notes = withFooter("Mine", ["Open in Taskly: https://x/w/acc/tasks?task=t-1a2b-3c"])
+  assert.equal(footerTaskId(notes), "t-1a2b-3c")
+  // A link above the footer is the person's own text, not Taskly's.
+  assert.equal(footerTaskId("see https://x/w/acc/tasks?task=t-9"), null)
+  assert.equal(footerTaskId(""), null)
 })

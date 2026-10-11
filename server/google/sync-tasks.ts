@@ -6,12 +6,11 @@
  */
 import type { Task, TaskInput } from "@/lib/types"
 import { actorFor, type Ctx } from "@/server/context"
-import { first } from "@/server/db"
 import { tasksApi } from "@/server/google/apis"
 import { googleFor, isGone, type Google } from "@/server/google/client"
 import { containerGone } from "@/server/google/containers"
 import {
-  FOOTER_MARK,
+  footerTaskId,
   googleTaskBody,
   googleTaskFields,
   statusFromDone,
@@ -21,6 +20,7 @@ import {
 } from "@/server/google/mapping"
 import { diff, restrict, threeWayMerge } from "@/server/google/merge"
 import { connectedMembers, noticeTo, taskFooter } from "@/server/google/people"
+import { onCopyDeleted, onNewTaskInGoogle, taskFieldsFor, taskSyncs } from "@/server/google/policy"
 import { enqueue, queueGoogleSync } from "@/server/google/queue"
 import {
   deleteLink,
@@ -33,25 +33,13 @@ import {
 } from "@/server/google/store"
 import { applyTaskUpdate, createTaskAs, deleteTaskAs, findTask } from "@/server/services/tasks"
 
-/** What each role may change from Google (members: status only, as in the app). */
-const ADMIN_FIELDS = [
-  "title",
-  "description",
-  "dueDate",
-  "done",
-] as const satisfies (keyof TaskFields)[]
-const MEMBER_FIELDS = ["done"] as const satisfies (keyof TaskFields)[]
-
-const taskLink = (task: Task) => `/w/${task.accountId}/tasks?task=T-${task.number}`
+const taskLink = (task: Task) => `/w/${task.accountId}/tasks?task=${task.id}`
 
 /** Bring every Google copy of this task in line: add, update, or remove. */
 export async function syncTask(ctx: Ctx, accountId: string, taskId: string): Promise<void> {
   const task = await findTask(ctx, accountId, taskId)
   const links = await linksFor(ctx.db, "task", taskId)
-  const wanted =
-    task && task.status !== "cancelled"
-      ? await connectedMembers(ctx, accountId, task.assigneeIds)
-      : []
+  const wanted = task && taskSyncs(task) ? await connectedMembers(ctx, accountId, task.assigneeIds) : []
   await eachPerson([
     ...links
       .filter((link) => !wanted.includes(link.user_id))
@@ -132,10 +120,11 @@ export async function syncTaskCopy(
   const actual = googleTaskFields(remote)
   // An emptied title in Google reads as "unchanged"; Taskly titles can't be empty.
   const theirs = { ...actual, title: actual.title || base.title }
+  const ownPrivate = task.private && task.createdById === userId
   const { remote: permitted, blocked } = restrict(
     base,
     theirs,
-    actor?.role === "administrator" ? ADMIN_FIELDS : actor ? MEMBER_FIELDS : [],
+    taskFieldsFor(actor?.role ?? null, ownPrivate),
   )
   const merged = threeWayMerge(base, taskFields(task), permitted, task.updatedAt >= (remote.updated ?? ""))
 
@@ -158,16 +147,14 @@ export async function syncTaskCopy(
   const footer = await taskFooter(ctx, current, userId)
   const footerText = footer.join("\n")
   const needsPatch =
-    Object.keys(diff(actual, merged.value)).length > 0 ||
-    footerText !== link.footer ||
-    !(remote.title ?? "").startsWith(`T-${current.number} · `)
+    Object.keys(diff(actual, merged.value)).length > 0 || footerText !== link.footer
   let etag = remote.etag ?? null
   if (needsPatch) {
     const patched = await tasksApi.patch(
       g,
       container.google_id,
       link.google_id,
-      googleTaskBody(current.number, merged.value, footer),
+      googleTaskBody(merged.value, footer),
     )
     etag = patched.etag ?? null
   }
@@ -181,7 +168,6 @@ export async function syncTaskCopy(
     await noticeTo(ctx, userId, "google_change_reverted", {
       accountId: task.accountId,
       title: current.title,
-      ref: `T-${current.number}`,
       link: taskLink(current),
     })
   }
@@ -198,7 +184,7 @@ async function insertCopy(
   const footer = await taskFooter(ctx, task, userId)
   let created: GoogleTask
   try {
-    created = await tasksApi.insert(g, container.google_id, googleTaskBody(task.number, fields, footer))
+    created = await tasksApi.insert(g, container.google_id, googleTaskBody(fields, footer))
   } catch (error) {
     if (!isGone(error)) throw error
     await containerGone(ctx, container) // they deleted the list; setup recreates it
@@ -219,7 +205,8 @@ async function insertCopy(
 
 /**
  * Their copy was deleted in Google. An administrator deleting a task they
- * created deletes it in Taskly; anyone else gets the copy back, with a notice.
+ * created, or anyone deleting their own private task, deletes it in Taskly;
+ * anyone else gets the copy back, with a notice.
  */
 async function copyDeleted(
   ctx: Ctx,
@@ -230,7 +217,8 @@ async function copyDeleted(
 ): Promise<void> {
   await deleteLink(ctx.db, link)
   const actor = await actorFor(ctx, userId, task.accountId)
-  if (actor?.role === "administrator" && task.createdById === userId) {
+  const owner = task.createdById === userId
+  if (actor && onCopyDeleted(actor.role, owner, task.private && owner) === "delete") {
     await deleteTaskAs(ctx, actor, task)
     await queueGoogleSync(ctx, "task", task.accountId, task.id, { drain: false })
     return
@@ -239,15 +227,14 @@ async function copyDeleted(
   await noticeTo(ctx, userId, "google_item_restored", {
     accountId: task.accountId,
     title: task.title,
-    ref: `T-${task.number}`,
     link: taskLink(task),
   })
 }
 
 /**
- * A task someone added to their "Taskly · <Workspace>" list in Google. An
- * administrator's becomes a workspace task assigned to them; a member's moves
- * to their own default list (members can't create workspace tasks).
+ * A task someone added to their "Taskly · <Workspace>" list in Google. It
+ * becomes their own private task, synced to Google. Someone who can't act in
+ * the workspace any more gets it moved to their own default list.
  */
 export async function importTask(
   ctx: Ctx,
@@ -260,7 +247,7 @@ export async function importTask(
   if (await adoptOrphan(ctx, g, userId, container, item)) return
   const actor = await actorFor(ctx, userId, accountId)
   const fields = googleTaskFields(item)
-  if (actor?.role !== "administrator") {
+  if (!actor || onNewTaskInGoogle(actor.role) === "move") {
     await tasksApi.insert(g, "@default", {
       title: item.title ?? "",
       notes: item.notes ?? "",
@@ -270,7 +257,6 @@ export async function importTask(
     await tasksApi.delete(g, container.google_id, item.id).catch((error) => {
       if (!isGone(error)) throw error
     })
-    if (actor) await noticeTo(ctx, userId, "google_task_moved", { accountId, title: fields.title })
     return
   }
   const task = await createTaskAs(ctx, actor, {
@@ -284,11 +270,13 @@ export async function importTask(
     dueTime: "",
     assigneeIds: [userId],
     meetingId: null,
+    private: true,
+    googleSync: true,
   })
-  // Adopt their Google task as this person's copy, then give it the T-n title and footer.
+  // Adopt their Google task as this person's copy, then give it Taskly's footer.
   const footer = await taskFooter(ctx, task, userId)
   const value = taskFields(task)
-  const patched = await tasksApi.patch(g, container.google_id, item.id, googleTaskBody(task.number, value, footer))
+  const patched = await tasksApi.patch(g, container.google_id, item.id, googleTaskBody(value, footer))
   await saveLink(ctx.db, {
     kind: "task",
     entity_id: task.id,
@@ -304,7 +292,7 @@ export async function importTask(
 
 /**
  * One of Taskly's own copies without a link (two runs created it at once, or
- * a link was lost): recognised by its `T-n ·` title and footer. Adopt it if
+ * a link was lost): recognised by the task link in its footer. Adopt it if
  * this person has no copy of that task yet, otherwise delete the duplicate.
  * Returns false for anything that isn't a Taskly copy.
  */
@@ -315,16 +303,10 @@ async function adoptOrphan(
   container: ContainerRow,
   item: GoogleTask,
 ): Promise<boolean> {
-  const number = /^T-(\d+)\s*·/.exec(item.title ?? "")?.[1]
-  if (!number || !(item.notes ?? "").includes(FOOTER_MARK)) return false
-  const row = await first<{ id: string }>(
-    ctx.db,
-    "SELECT id FROM tasks WHERE account_id = ? AND number = ?",
-    container.account_id,
-    Number(number),
-  )
-  const task = row ? await findTask(ctx, container.account_id!, row.id) : null
-  const wanted = task && task.status !== "cancelled" && task.assigneeIds.includes(userId)
+  const taskId = footerTaskId(item.notes)
+  if (!taskId) return false
+  const task = await findTask(ctx, container.account_id!, taskId)
+  const wanted = task && taskSyncs(task) && task.assigneeIds.includes(userId)
   if (wanted && !(await getLink(ctx.db, "task", task.id, userId))) {
     await saveLink(ctx.db, {
       kind: "task",

@@ -19,6 +19,7 @@ import {
   type ContainerRow,
 } from "@/server/google/store"
 import { decryptToken } from "@/server/google/tokens"
+import { encryptionKey } from "@/server/settings"
 
 /** Keep a few days of closed tasks and past meetings in Google after connecting. */
 const BACKFILL_DAYS = 30
@@ -62,7 +63,7 @@ export async function setupMember(ctx: Ctx, userId: string, accountId: string): 
     all<{ id: string }>(
       ctx.db,
       `SELECT t.id FROM tasks t JOIN task_assignees ta ON ta.task_id = t.id AND ta.user_id = ?
-       WHERE t.account_id = ? AND t.status != 'cancelled'
+       WHERE t.account_id = ? AND t.status != 'cancelled' AND (t.private = 0 OR t.google_sync = 1)
          AND (t.status != 'completed' OR t.completed_at >= ?)`,
       userId,
       accountId,
@@ -247,7 +248,7 @@ export async function refreshPersonalContainers(ctx: Ctx, g: Google, userId: str
 
 /** Ask Google to call the webhook when this workspace calendar changes (needs a public URL). */
 export async function watchCalendar(ctx: Ctx, g: Google, row: ContainerRow): Promise<void> {
-  const address = webhookUrl(ctx.env)
+  const address = await webhookUrl(ctx)
   if (!address) return
   const id = crypto.randomUUID()
   const token = newSessionToken()
@@ -281,7 +282,7 @@ async function stopChannel(g: Google, row: ContainerRow): Promise<void> {
 
 /** Replace channels that expire within a day (or are missing) on workspace calendars. */
 export async function renewChannels(ctx: Ctx, at: Date): Promise<void> {
-  if (!webhookUrl(ctx.env)) return
+  if (!(await webhookUrl(ctx))) return
   const soon = new Date(at.getTime() + 86_400_000).toISOString()
   const rows = await all<ContainerRow>(
     ctx.db,
@@ -339,7 +340,8 @@ export async function purgeUser(ctx: Ctx, userId: string): Promise<void> {
   )
   await removeContainers(ctx, userId, rows)
   try {
-    await revokeToken(ctx.env, await decryptToken(ctx.env.GOOGLE_TOKEN_KEY, connection.refresh_token_enc))
+    const key = encryptionKey(ctx.env)
+    if (key) await revokeToken(ctx.env, await decryptToken(key, connection.refresh_token_enc))
   } catch {
     // Already unusable; nothing to revoke.
   }

@@ -20,6 +20,7 @@ export type ErrorCode =
   | "workspaceNotFound"
   | "workspaceInactive"
   | "alreadyMember"
+  | "alreadyInvited"
   | "selfRemove"
   | "userNotFound"
   | "logoTooLarge"
@@ -30,6 +31,17 @@ export type ErrorCode =
   | "googleNotConnected"
   | "googleReconnect"
   | "googleUnavailable"
+  | "inviteInvalid"
+  | "resetInvalid"
+  | "verifyInvalid"
+  | "tooManyEmails"
+  | "tooSoon"
+  | "secretRequired"
+  | "smtpInsecure"
+  | "encryptionKeyMissing"
+  | "invalidUrl"
+  | "mailNotConfigured"
+  | "mailFailed"
 
 /** Error whose `code` maps to a translated message (`errors.<code>`). */
 export class AppError extends Error {

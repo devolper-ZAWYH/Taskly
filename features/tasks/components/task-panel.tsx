@@ -1,6 +1,6 @@
 "use client"
 
-import { BanIcon, CalendarDaysIcon, Loader2Icon, Trash2Icon } from "lucide-react"
+import { BanIcon, CalendarDaysIcon, Loader2Icon, LockIcon, Trash2Icon } from "lucide-react"
 import Link from "next/link"
 import * as React from "react"
 import { ConfirmDialog } from "@/components/shell/confirm-dialog"
@@ -28,7 +28,7 @@ import {
   useTask,
   useUpdateTask,
 } from "@/features/tasks/hooks/use-tasks"
-import { formatTaskRef, isOverdue } from "@/features/tasks/lib/task-meta"
+import { isOverdue } from "@/features/tasks/lib/task-meta"
 import { canDeleteTask, canEditTask, isClosed, type TaskInput } from "@/lib/api/tasks"
 import { useLocale } from "@/lib/i18n/locale-provider"
 import type { Task } from "@/lib/types"
@@ -57,28 +57,30 @@ function toInput(task: Task): TaskInput {
     dueTime,
     assigneeIds,
     meetingId,
+    // Only private tasks have their own Google sync switch.
+    ...(task.private ? { googleSync: task.googleSync } : {}),
   }
 }
 
-/** Side panel for viewing and editing one task, driven by `?task=T-n`. */
+/** Side panel for viewing and editing one task, driven by `?task=<id>`. */
 export function TaskPanel({
-  taskRef,
+  taskId,
   onClose,
 }: {
-  taskRef: string | null
+  taskId: string | null
   onClose: () => void
 }): React.ReactElement {
   const { t } = useLocale()
-  const query = useTask(taskRef)
+  const query = useTask(taskId)
 
   return (
-    <Sheet open={Boolean(taskRef)} onOpenChange={(open) => !open && onClose()}>
+    <Sheet open={Boolean(taskId)} onOpenChange={(open) => !open && onClose()}>
       <SheetPopup className="max-w-xl">
         {query.data ? (
           <TaskEditor key={query.data.id} task={query.data} onClose={onClose} />
         ) : query.isError ? (
           <SheetHeader>
-            <SheetTitle className="font-display text-xl">{taskRef}</SheetTitle>
+            <SheetTitle className="font-display text-xl">{t("tasks.panel.notFoundTitle")}</SheetTitle>
             <SheetDescription>{t("tasks.panel.notFound")}</SheetDescription>
           </SheetHeader>
         ) : (
@@ -101,8 +103,7 @@ function TaskEditor({ task, onClose }: { task: Task; onClose: () => void }): Rea
   const [draft, setDraft] = React.useState<TaskInput>(() => toInput(task))
   const [confirmDelete, setConfirmDelete] = React.useState(false)
 
-  const statusOnly = !canEditTask(me)
-  const ref = formatTaskRef(task.number)
+  const statusOnly = !canEditTask(me, task)
   const dirty = JSON.stringify(draft) !== JSON.stringify(toInput(task))
   const creator = people?.find((p) => p.id === task.createdById)
   const error = updateTask.error ?? cancelTask.error
@@ -120,8 +121,16 @@ function TaskEditor({ task, onClose }: { task: Task; onClose: () => void }): Rea
     <form onSubmit={save} className="flex min-h-0 flex-1 flex-col">
       <SheetHeader>
         <div className="flex flex-wrap items-center gap-2 pe-8">
-          <span className="font-mono text-xs text-foreground-muted">{ref}</span>
           <StatusBadge status={task.status} />
+          {task.private ? (
+            <span
+              className="inline-flex items-center gap-1 text-xs text-foreground-muted"
+              data-testid="task-private-badge"
+            >
+              <LockIcon className="size-3" aria-hidden="true" />
+              {t("tasks.privateBadge")}
+            </span>
+          ) : null}
           {isOverdue(task) ? (
             <span className="text-xs font-semibold tracking-wide text-destructive-foreground uppercase">
               {t("tasks.panel.overdue")}
@@ -138,9 +147,13 @@ function TaskEditor({ task, onClose }: { task: Task; onClose: () => void }): Rea
         </SheetDescription>
         {/* Admins see (and change) the meeting in the form's chip instead. */}
         {task.meetingId && statusOnly ? <MeetingOrigin meetingId={task.meetingId} /> : null}
-        {/* Cancelled tasks are taken out of Google. */}
+        {/* Cancelled tasks are taken out of Google; private ones sync only if switched on. */}
         <SyncedToGoogle
-          involved={task.assigneeIds.includes(me.id) && task.status !== "cancelled"}
+          involved={
+            task.assigneeIds.includes(me.id) &&
+            task.status !== "cancelled" &&
+            (!task.private || task.googleSync)
+          }
         />
       </SheetHeader>
 
@@ -157,6 +170,7 @@ function TaskEditor({ task, onClose }: { task: Task; onClose: () => void }): Rea
             showStatus
             statusOnly={statusOnly}
             showRelated={!statusOnly}
+            privateTask={task.private}
           />
           <FormError message={error ? errorMessage(error) : null} />
         </div>
@@ -182,7 +196,7 @@ function TaskEditor({ task, onClose }: { task: Task; onClose: () => void }): Rea
                 {t("tasks.panel.cancelTask")}
               </Button>
             ) : null}
-            {canDeleteTask(me) ? (
+            {canDeleteTask(me, task) ? (
               <Button
                 type="button"
                 variant="ghost"
@@ -209,7 +223,7 @@ function TaskEditor({ task, onClose }: { task: Task; onClose: () => void }): Rea
       <ConfirmDialog
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
-        title={t("tasks.panel.deleteTitle", { ref })}
+        title={t("tasks.panel.deleteTitle")}
         description={t("tasks.panel.deleteBody", { title: task.title })}
         confirmLabel={t("tasks.panel.deleteTask")}
         onConfirm={async () => {

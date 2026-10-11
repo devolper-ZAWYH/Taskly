@@ -14,9 +14,12 @@ import {
   MenuTrigger,
 } from "@/components/ui/menu"
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { TimePicker } from "@/components/ui/time-picker"
 import { useMeetingOptions } from "@/features/calendar/hooks/use-meetings"
+import { GoogleMark } from "@/features/google/google-mark"
+import { useGoogleConnected } from "@/features/google/hooks"
 import { AssigneePicker } from "@/features/tasks/components/assignees"
 import { PriorityLabel, StatusBadge } from "@/features/tasks/components/task-badges"
 import { PRIORITIES, STATUSES } from "@/features/tasks/lib/task-meta"
@@ -46,6 +49,7 @@ export function TaskFields({
   statusOnly = false,
   showRelated = false,
   autoFocusTitle = false,
+  privateTask = false,
 }: {
   value: TaskInput
   onChange: (next: TaskInput) => void
@@ -56,8 +60,11 @@ export function TaskFields({
   /** The meeting chip — only on the task page, not inside a meeting. */
   showRelated?: boolean
   autoFocusTitle?: boolean
+  /** A private task: no assignees (it's yours), and an optional Google Tasks copy. */
+  privateTask?: boolean
 }): React.ReactElement {
   const { t, formatDate } = useLocale()
+  const googleConnected = useGoogleConnected()
   const set = <K extends keyof TaskInput>(key: K, v: TaskInput[K]) =>
     onChange({ ...value, [key]: v })
   const disabled = allDisabled || statusOnly
@@ -193,13 +200,35 @@ export function TaskFields({
         </FormRow>
       </div>
 
-      <FormRow label={t("tasks.form.assignees")}>
-        <AssigneePicker
-          value={value.assigneeIds}
-          disabled={disabled}
-          onChange={(ids) => set("assigneeIds", ids)}
-        />
-      </FormRow>
+      {privateTask ? (
+        googleConnected ? (
+          <label className="flex cursor-pointer items-start justify-between gap-4 rounded-md border p-3">
+            <span>
+              <span className="flex items-center gap-1.5 text-sm font-medium">
+                <GoogleMark />
+                {t("tasks.form.googleSync")}
+              </span>
+              <span className="mt-0.5 block text-xs text-foreground-muted">
+                {t("tasks.form.googleSyncHint")}
+              </span>
+            </span>
+            <Switch
+              checked={value.googleSync === true}
+              disabled={disabled}
+              onCheckedChange={(on) => set("googleSync", on)}
+              data-testid="task-google-sync"
+            />
+          </label>
+        ) : null
+      ) : (
+        <FormRow label={t("tasks.form.assignees")}>
+          <AssigneePicker
+            value={value.assigneeIds}
+            disabled={disabled}
+            onChange={(ids) => set("assigneeIds", ids)}
+          />
+        </FormRow>
+      )}
     </div>
   )
 }

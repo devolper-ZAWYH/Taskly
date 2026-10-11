@@ -1,6 +1,7 @@
 import { AppError } from "@/lib/api/core"
 import {
   canChangeTaskStatus,
+  canCreateSharedTask,
   canDeleteTask,
   canEditTask,
   canViewMeeting,
@@ -8,7 +9,7 @@ import {
   MEMBER_STATUSES,
 } from "@/lib/permissions"
 import type { Page, Task, TaskInput } from "@/lib/types"
-import { requireWorkspace, requireWorkspaceAdmin, type Actor, type Ctx } from "@/server/context"
+import { requireWorkspace, type Actor, type Ctx } from "@/server/context"
 import { newId } from "@/server/crypto"
 import { queueGoogleSync } from "@/server/google/queue"
 import { notify } from "@/server/services/notifications"
@@ -40,6 +41,23 @@ const DUE_KEY = `CASE WHEN t.due_date = '' THEN '9999' ELSE t.due_date || 'T' ||
 
 const CLOSED_SQL = `t.status IN ('completed', 'cancelled')`
 const ASSIGNED_TO = `EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = ?)`
+/** One of the viewer's own private tasks (bind: viewer id). */
+const OWN_PRIVATE = `(t.private = 1 AND t.created_by_id = ?)`
+
+/**
+ * Condition on `tasks t` for what `actor` can see (`canViewTask` in SQL): their
+ * own private tasks, plus workspace tasks (all of them for administrators;
+ * members: assigned to them, never cancelled).
+ */
+export function visibleTasks(actor: Actor): { sql: string; binds: unknown[] } {
+  if (actor.role === "administrator") {
+    return { sql: `(t.private = 0 OR ${OWN_PRIVATE})`, binds: [actor.id] }
+  }
+  return {
+    sql: `(${OWN_PRIVATE} OR (t.private = 0 AND t.status != 'cancelled' AND ${ASSIGNED_TO}))`,
+    binds: [actor.id, actor.id],
+  }
+}
 
 export async function findTask(ctx: Ctx, accountId: string, id: string): Promise<Task | null> {
   const row = await first<TaskRow>(
@@ -51,7 +69,7 @@ export async function findTask(ctx: Ctx, accountId: string, id: string): Promise
   return row ? toTask(row) : null
 }
 
-/** Admins see every task in the workspace; members only tasks assigned to them. */
+/** Your private tasks; workspace tasks: all for admins, members only those assigned to them. */
 function canAccessTask(actor: Actor, task: Task): boolean {
   return task.accountId === actor.account.id && canViewTask(actor, task)
 }
@@ -80,19 +98,23 @@ export async function listTasks(ctx: Ctx, accountId: string, params: unknown): P
 
   const where = ["t.account_id = ?"]
   const binds: unknown[] = [accountId]
-  if (scope === "assigned") {
-    where.push(`NOT ${CLOSED_SQL}`, ASSIGNED_TO)
+  if (scope === "mine") {
+    where.push(OWN_PRIVATE, `NOT ${CLOSED_SQL}`)
+    binds.push(actor.id)
+  } else if (scope === "assigned") {
+    where.push("t.private = 0", `NOT ${CLOSED_SQL}`, ASSIGNED_TO)
     binds.push(actor.id)
   } else if (scope === "completed") {
-    if (isAdmin) {
-      where.push(CLOSED_SQL)
-    } else {
-      // Members never see cancelled tasks.
-      where.push("t.status = 'completed'", ASSIGNED_TO)
-      binds.push(actor.id)
-    }
+    // Your own closed private tasks, plus closed workspace tasks: all of them
+    // for administrators; members only see completed ones assigned to them.
+    where.push(
+      isAdmin
+        ? `${CLOSED_SQL} AND (t.private = 0 OR ${OWN_PRIVATE})`
+        : `((${OWN_PRIVATE} AND ${CLOSED_SQL}) OR (t.private = 0 AND t.status = 'completed' AND ${ASSIGNED_TO}))`,
+    )
+    binds.push(...(isAdmin ? [actor.id] : [actor.id, actor.id]))
   } else {
-    where.push(`NOT ${CLOSED_SQL}`)
+    where.push("t.private = 0", `NOT ${CLOSED_SQL}`)
   }
   if (filters.status) {
     where.push("t.status = ?")
@@ -118,12 +140,11 @@ export async function listTasks(ctx: Ctx, accountId: string, params: unknown): P
   }
   if (search) {
     const like = `%${search.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
-    const ref = search.replace(/^t-?/i, "")
-    where.push(`(t.title LIKE ? ESCAPE '\\' OR t.description LIKE ? ESCAPE '\\' OR t.number = ?)`)
-    binds.push(like, like, /^\d+$/.test(ref) ? Number(ref) : -1)
+    where.push(`(t.title LIKE ? ESCAPE '\\' OR t.description LIKE ? ESCAPE '\\')`)
+    binds.push(like, like)
   }
   const whereSql = where.join(" AND ")
-  const order = scope === "completed" ? "t.updated_at DESC" : `${DUE_KEY} ASC, t.number DESC`
+  const order = scope === "completed" ? "t.updated_at DESC" : `${DUE_KEY} ASC, t.created_at DESC`
 
   const [rows, count] = await Promise.all([
     all<TaskRow>(
@@ -142,19 +163,9 @@ export async function listTasks(ctx: Ctx, accountId: string, params: unknown): P
   return { items: rows.map(toTask), total: count?.total ?? 0 }
 }
 
-/** Look up by id or display reference (`T-12` / `12`) within the workspace. */
-export async function getTask(ctx: Ctx, accountId: string, ref: unknown): Promise<Task> {
+export async function getTask(ctx: Ctx, accountId: string, id: unknown): Promise<Task> {
   const actor = await requireWorkspace(ctx, accountId)
-  const value = str(ref, 100)
-  const num = value.replace(/^t-?/i, "")
-  const row = await first<TaskRow>(
-    ctx.db,
-    `SELECT ${TASK_COLUMNS} FROM tasks t WHERE t.account_id = ? AND (t.id = ? OR t.number = ?)`,
-    accountId,
-    value,
-    /^\d+$/.test(num) ? Number(num) : -1,
-  )
-  const task = row ? toTask(row) : null
+  const task = await findTask(ctx, accountId, str(id, 100))
   // Hide existence from people who can't see it.
   if (!task || !canAccessTask(actor, task)) throw new AppError("notFound")
   return task
@@ -189,18 +200,24 @@ function assigneeStatements(ctx: Ctx, taskId: string, ids: string[]): D1Prepared
 }
 
 export async function createTask(ctx: Ctx, accountId: string, raw: unknown): Promise<Task> {
-  const actor = await requireWorkspaceAdmin(ctx, accountId)
+  const actor = await requireWorkspace(ctx, accountId)
   const task = await createTaskAs(ctx, actor, taskInput(raw))
   await queueGoogleSync(ctx, "task", accountId, task.id)
   return task
 }
 
 /**
- * Create a task as `actor` (an administrator): from the app, or from their
- * Google task list. Callers queue the Google sync.
+ * Create a task as `actor`: from the app, or from their Google task list.
+ * Workspace tasks need an administrator; a private task is anyone's, with its
+ * creator as its only assignee. Callers queue the Google sync.
  */
-export async function createTaskAs(ctx: Ctx, actor: Actor, input: TaskInput): Promise<Task> {
+export async function createTaskAs(ctx: Ctx, actor: Actor, raw: TaskInput): Promise<Task> {
   const accountId = actor.account.id
+  const isPrivate = raw.private === true
+  if (!isPrivate && !canCreateSharedTask(actor)) throw new AppError("forbidden")
+  const input: TaskInput = isPrivate
+    ? { ...raw, assigneeIds: [actor.id], googleSync: raw.googleSync === true }
+    : { ...raw, googleSync: false }
   const title = input.title.trim()
   if (!title) throw new AppError("titleRequired")
   await assertAssignees(ctx, accountId, input.assigneeIds)
@@ -209,6 +226,8 @@ export async function createTaskAs(ctx: Ctx, actor: Actor, input: TaskInput): Pr
   const id = newId("t")
   const now = nowIso()
   // One transaction: bump the workspace counter and take the new number.
+  // (`number` is internal only: the UNIQUE column predates its removal from
+  // the app, and dropping it would mean rebuilding the tasks table.)
   await ctx.db.batch([
     ctx.db
       .prepare("UPDATE accounts SET task_counter = task_counter + 1 WHERE id = ?")
@@ -217,8 +236,8 @@ export async function createTaskAs(ctx: Ctx, actor: Actor, input: TaskInput): Pr
       .prepare(
         `INSERT INTO tasks (id, account_id, number, title, description, status, priority,
            start_date, start_time, due_date, due_time, created_by_id, meeting_id,
-           completed_at, created_at, updated_at)
-         VALUES (?, ?, (SELECT task_counter FROM accounts WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           private, google_sync, completed_at, created_at, updated_at)
+         VALUES (?, ?, (SELECT task_counter FROM accounts WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         id,
@@ -234,6 +253,8 @@ export async function createTaskAs(ctx: Ctx, actor: Actor, input: TaskInput): Pr
         input.dueTime,
         actor.id,
         input.meetingId ?? null,
+        isPrivate ? 1 : 0,
+        input.googleSync ? 1 : 0,
         input.status === "completed" ? now : null,
         now,
         now,
@@ -268,8 +289,9 @@ export async function updateTask(
 
 /**
  * Change a task the actor can see, with the same rules as the app: members
- * may only move their own tasks through the workflow. Used for edits made in
- * the app and in Google. Callers queue the Google sync.
+ * may only move workspace tasks assigned to them through the workflow; a
+ * private task's owner may change anything but its assignee. Used for edits
+ * made in the app and in Google. Callers queue the Google sync.
  */
 export async function applyTaskUpdate(
   ctx: Ctx,
@@ -279,7 +301,7 @@ export async function applyTaskUpdate(
 ): Promise<Task> {
   const accountId = actor.account.id
   if (!canAccessTask(actor, current)) throw new AppError("notFound")
-  if (!canEditTask(actor)) {
+  if (!canEditTask(actor, current)) {
     const onlyStatus = Object.keys(patch).every((key) => key === "status")
     if (
       !onlyStatus ||
@@ -290,6 +312,14 @@ export async function applyTaskUpdate(
     }
   }
   if (patch.title !== undefined && !patch.title.trim()) throw new AppError("titleRequired")
+  if (current.private) {
+    // A private task stays its owner's alone.
+    if (patch.assigneeIds && patch.assigneeIds.join() !== current.assigneeIds.join()) {
+      throw new AppError("forbidden")
+    }
+  } else if (patch.googleSync !== undefined) {
+    throw new AppError("badRequest")
+  }
   if (patch.assigneeIds)
     await assertAssignees(ctx, accountId, patch.assigneeIds, current.assigneeIds)
   if (patch.meetingId && patch.meetingId !== current.meetingId) {
@@ -311,7 +341,8 @@ export async function applyTaskUpdate(
     ctx.db
       .prepare(
         `UPDATE tasks SET title = ?, description = ?, status = ?, priority = ?, start_date = ?,
-           start_time = ?, due_date = ?, due_time = ?, meeting_id = ?, completed_at = ?, updated_at = ?
+           start_time = ?, due_date = ?, due_time = ?, meeting_id = ?, google_sync = ?,
+           completed_at = ?, updated_at = ?
          WHERE id = ?`,
       )
       .bind(
@@ -324,6 +355,7 @@ export async function applyTaskUpdate(
         next.dueDate,
         next.dueTime,
         next.meetingId,
+        next.googleSync ? 1 : 0,
         next.completedAt,
         next.updatedAt,
         current.id,
@@ -360,14 +392,13 @@ function taskData(actor: Actor, task: Task) {
   return {
     actor: actor.user.name,
     workspace: actor.account.name,
-    ref: `T-${task.number}`,
     title: task.title,
     status: task.status,
   }
 }
 
 function taskLink(task: Task): string {
-  return `/w/${task.accountId}/tasks?task=T-${task.number}`
+  return `/w/${task.accountId}/tasks?task=${task.id}`
 }
 
 export async function cancelTask(ctx: Ctx, accountId: string, id: unknown): Promise<Task> {
@@ -382,9 +413,9 @@ export async function deleteTask(ctx: Ctx, accountId: string, id: unknown): Prom
   await queueGoogleSync(ctx, "task", accountId, task.id)
 }
 
-/** Delete as `actor` (administrators only). Callers queue the Google sync. */
+/** Delete as `actor` (administrators, or a private task's owner). Callers queue the Google sync. */
 export async function deleteTaskAs(ctx: Ctx, actor: Actor, task: Task): Promise<void> {
-  if (!canDeleteTask(actor)) throw new AppError("forbidden")
+  if (!canDeleteTask(actor, task)) throw new AppError("forbidden")
   await ctx.db.prepare("DELETE FROM tasks WHERE id = ?").bind(task.id).run()
 }
 
@@ -398,18 +429,17 @@ export async function listCalendarTasks(
   if (!isObject(params)) throw new AppError("badRequest")
   const from = date(params.from, false)
   const to = date(params.to, false)
-  const isAdmin = actor.role === "administrator" ? 1 : 0
+  const visible = visibleTasks(actor)
   const rows = await all<TaskRow>(
     ctx.db,
     `SELECT ${TASK_COLUMNS} FROM tasks t
      WHERE t.account_id = ? AND t.status != 'cancelled' AND t.due_date >= ? AND t.due_date <= ?
-       AND (? OR ${ASSIGNED_TO})
+       AND ${visible.sql}
      ORDER BY ${DUE_KEY}`,
     accountId,
     from,
     to,
-    isAdmin,
-    actor.id,
+    ...visible.binds,
   )
   return rows.map(toTask)
 }

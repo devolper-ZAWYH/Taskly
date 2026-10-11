@@ -42,7 +42,7 @@ export function GoogleSyncOnOpen(): null {
     const now = Date.now()
     if (now - readLastSync(me.id) < MIN_INTERVAL_MS) return
     writeLastSync(me.id, now)
-    mutate()
+    mutate(false)
   }, [connected, me.id, mutate])
 
   return null

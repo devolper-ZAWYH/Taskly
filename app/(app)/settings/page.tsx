@@ -12,6 +12,7 @@ import { toastManager } from "@/components/ui/toast"
 import { ME_KEY, useCurrentUser } from "@/features/auth/use-auth"
 import { GoogleSettings } from "@/features/google/google-settings"
 import { NotificationSettings } from "@/features/notifications/notification-settings"
+import { EmailAddresses } from "@/features/settings/email-addresses"
 import { InstallApp } from "@/features/settings/install-app"
 import { ShareApp } from "@/features/settings/share-app"
 import { AvatarField } from "@/features/users/components/avatar-field"
@@ -122,6 +123,10 @@ export default function SettingsPage() {
             </Button>
           </div>
         </form>
+      </Section>
+
+      <Section title={t("settings.emails.title")} hint={t("settings.emails.hint")}>
+        <EmailAddresses />
       </Section>
 
       <Section title={t("google.settings.title")} hint={t("google.settings.hint")}>

@@ -3,7 +3,7 @@
 import { CircleCheckIcon, CircleIcon } from "lucide-react"
 import { eventBarStyle, GoogleMark } from "@/features/google/google-mark"
 import { spanTimesOn, type EventSpan } from "@/features/google/personal-events"
-import { formatTaskRef, isOverdue } from "@/features/tasks/lib/task-meta"
+import { isOverdue } from "@/features/tasks/lib/task-meta"
 import { useLocale } from "@/lib/i18n/locale-provider"
 import type { Meeting, Task } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -69,9 +69,6 @@ export function TaskChip({
       )}
     >
       <Icon className="size-3 shrink-0" />
-      <span className="shrink-0 font-mono text-[10px] opacity-70">
-        {formatTaskRef(task.number)}
-      </span>
       <span dir="auto" className="truncate">
         {task.title}
       </span>

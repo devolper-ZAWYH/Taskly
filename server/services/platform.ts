@@ -14,7 +14,7 @@ import {
   type WorkspaceMember,
 } from "@/lib/types"
 import { requireOperator, type Ctx } from "@/server/context"
-import { hashPassword, newId } from "@/server/crypto"
+import { hashPassword, newId, newSessionToken } from "@/server/crypto"
 import {
   all,
   first,
@@ -25,10 +25,13 @@ import {
   type AccountRow,
   type UserRow,
 } from "@/server/db"
+import { emailTaken } from "@/server/emails"
+import { enqueue, queueMeetingResync } from "@/server/google/queue"
 import { looksLikeImage } from "@/server/images"
+import { mailConfigured } from "@/server/mail/send"
 import { membersOf } from "@/server/services/members"
-import { enqueue } from "@/server/google/queue"
 import { notify } from "@/server/services/notifications"
+import { sendInvitation, type Inviter } from "@/server/services/password-links"
 import {
   assertEmail,
   bool,
@@ -38,6 +41,7 @@ import {
   password,
   ROLES,
   str,
+  timeZone,
 } from "@/server/validate"
 
 type AccountSummaryRow = AccountRow & { member_count: number }
@@ -87,6 +91,7 @@ export async function createAccount(ctx: Ctx, input: unknown): Promise<Account> 
     active: true,
     createdAt: nowIso(),
     logoUrl: null,
+    timeZone: null,
   }
   await run(
     ctx.db,
@@ -109,13 +114,20 @@ export async function updateAccount(ctx: Ctx, id: unknown, input: unknown): Prom
     if (!next.name) throw new AppError("nameRequired")
   }
   if (input.active !== undefined) next.active = bool(input.active)
+  // "" or null: no workspace zone (each organiser's own).
+  if (input.timeZone !== undefined) {
+    next.timeZone = input.timeZone === null || input.timeZone === "" ? null : timeZone(input.timeZone)
+  }
   await run(
     ctx.db,
-    "UPDATE accounts SET name = ?, active = ? WHERE id = ?",
+    "UPDATE accounts SET name = ?, active = ?, timezone = ? WHERE id = ?",
     next.name,
     next.active ? 1 : 0,
+    next.timeZone,
     next.id,
   )
+  // Meeting times now mean a different zone: rewrite them on every Google copy.
+  if (next.timeZone !== row.timezone) await queueMeetingResync(ctx, next.id)
   return next
 }
 
@@ -175,12 +187,22 @@ export async function listAllUsers(ctx: Ctx, search: unknown = ""): Promise<User
   const q = str(search, 200).trim()
   const users = await all<UserRow>(
     ctx.db,
+    // Any of their addresses finds them, not only the primary.
     `SELECT * FROM users
-     WHERE deleted_at IS NULL AND (? = '' OR name LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\')
+     WHERE deleted_at IS NULL AND (? = '' OR name LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\'
+       OR id IN (SELECT user_id FROM user_emails WHERE verified_at IS NOT NULL AND email LIKE ? ESCAPE '\\'))
      ORDER BY is_operator DESC, active DESC, name COLLATE NOCASE`,
     q,
     likePattern(q),
     likePattern(q),
+    likePattern(q),
+  )
+  const others = await all<{ user_id: string; email: string }>(
+    ctx.db,
+    `SELECT user_id, email FROM user_emails
+     WHERE verified_at IS NOT NULL AND user_id IN (SELECT value FROM json_each(?))
+     ORDER BY created_at`,
+    JSON.stringify(users.map((u) => u.id)),
   )
   const memberships = await all<{
     id: string
@@ -196,6 +218,7 @@ export async function listAllUsers(ctx: Ctx, search: unknown = ""): Promise<User
   )
   return users.map((row) => ({
     ...toPublicUser(row),
+    otherEmails: others.filter((o) => o.user_id === row.id).map((o) => o.email),
     workspaces: memberships
       .filter((m) => m.user_id === row.id)
       .map((m) => ({
@@ -207,42 +230,82 @@ export async function listAllUsers(ctx: Ctx, search: unknown = ""): Promise<User
   }))
 }
 
-export async function createUser(ctx: Ctx, input: unknown): Promise<PublicUser> {
-  await requireOperator(ctx)
+/**
+ * Create a user (operator-only). With `invite`, they get an email to choose
+ * their own password (needs email set up); otherwise the operator sets one.
+ * `invited` is false if the invitation couldn't be sent: the account exists,
+ * and the operator can resend it or set a password.
+ */
+export async function createUser(
+  ctx: Ctx,
+  input: unknown,
+): Promise<PublicUser & { invited: boolean }> {
+  const operator = await requireOperator(ctx)
   if (!isObject(input)) throw new AppError("badRequest")
   const name = str(input.name, 100).trim()
   const email = normalizeEmail(str(input.email, 254))
+  const invite = input.invite === undefined ? false : bool(input.invite)
   if (!name) throw new AppError("nameRequired")
   assertEmail(email)
-  if (await first(ctx.db, "SELECT 1 FROM users WHERE email = ?", email)) {
-    throw new AppError("emailTaken")
-  }
-  const hash = await hashPassword(password(input.password))
+  if (await emailTaken(ctx.db, email)) throw new AppError("emailTaken")
+  if (invite && !(await mailConfigured(ctx))) throw new AppError("mailNotConfigured")
+  // Invited: a random password nobody knows until they choose their own.
+  const hash = await hashPassword(invite ? newSessionToken() : password(input.password))
   const user: PublicUser = {
     id: newId("u"),
     name,
     email,
     isOperator: bool(input.isOperator),
     active: true,
-    locale: "en",
+    locale: operator.locale,
     createdAt: nowIso(),
     avatarUrl: null,
     timeZone: null,
     calendarView: "calendar",
+    invitePending: invite,
   }
   await run(
     ctx.db,
-    `INSERT INTO users (id, name, email, password_hash, is_operator, active, locale, created_at)
-     VALUES (?, ?, ?, ?, ?, 1, 'en', ?)`,
+    `INSERT INTO users (id, name, email, password_hash, is_operator, active, locale, invited_at, created_at)
+     VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)`,
     user.id,
     user.name,
     user.email,
     hash,
     user.isOperator ? 1 : 0,
+    user.locale,
+    invite ? user.createdAt : null,
     user.createdAt,
   )
-  return user
+  let invited = false
+  if (invite) {
+    invited = await sendInvitation(ctx, platformInviter(operator), user.id).then(
+      () => true,
+      () => false,
+    )
+  }
+  return { ...user, invited }
 }
+
+/** Email a new password link to someone who hasn't accepted their invitation yet. */
+export async function resendUserInvite(ctx: Ctx, id: unknown): Promise<void> {
+  const operator = await requireOperator(ctx)
+  const row = await first<UserRow>(
+    ctx.db,
+    "SELECT * FROM users WHERE id = ? AND deleted_at IS NULL",
+    str(id, 100),
+  )
+  if (!row) throw new AppError("userNotFound")
+  if (row.invited_at === null) throw new AppError("badRequest")
+  if (!(await mailConfigured(ctx))) throw new AppError("mailNotConfigured")
+  await sendInvitation(ctx, platformInviter(operator), row.id)
+}
+
+const platformInviter = (operator: PublicUser): Inviter => ({
+  name: operator.name,
+  locale: operator.locale,
+  workspace: null,
+})
 
 export async function updateUser(ctx: Ctx, id: unknown, input: unknown): Promise<PublicUser> {
   const operator = await requireOperator(ctx)
@@ -264,7 +327,7 @@ export async function updateUser(ctx: Ctx, id: unknown, input: unknown): Promise
   if (input.email !== undefined) {
     const email = normalizeEmail(str(input.email, 254))
     assertEmail(email)
-    if (await first(ctx.db, "SELECT 1 FROM users WHERE email = ? AND id != ?", email, userId)) {
+    if (await emailTaken(ctx.db, email, userId)) {
       throw new AppError("emailTaken")
     }
     next.email = email
@@ -275,6 +338,8 @@ export async function updateUser(ctx: Ctx, id: unknown, input: unknown): Promise
     ctx.db
       .prepare("UPDATE users SET name = ?, email = ?, active = ?, is_operator = ? WHERE id = ?")
       .bind(next.name, next.email, next.active ? 1 : 0, next.isOperator ? 1 : 0, userId),
+    // If the new primary was one of their other addresses, it isn't "other" any more.
+    ctx.db.prepare("DELETE FROM user_emails WHERE user_id = ? AND email = ?").bind(userId, next.email),
     // Deactivation signs the person out everywhere.
     ...(next.active ? [] : [ctx.db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(userId)]),
   ])
@@ -291,7 +356,11 @@ export async function setUserPassword(ctx: Ctx, id: unknown, newPassword: unknow
     throw new AppError("userNotFound")
   }
   await ctx.db.batch([
-    ctx.db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").bind(hash, userId),
+    // A password set by the operator also settles a pending invitation.
+    ctx.db
+      .prepare("UPDATE users SET password_hash = ?, invited_at = NULL WHERE id = ?")
+      .bind(hash, userId),
+    ctx.db.prepare("DELETE FROM password_tokens WHERE user_id = ?").bind(userId),
     ctx.db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(userId),
   ])
 }
@@ -312,6 +381,7 @@ export async function deleteUser(ctx: Ctx, id: unknown): Promise<void> {
   await ctx.db.batch([
     ctx.db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(userId),
     ctx.db.prepare("DELETE FROM memberships WHERE user_id = ?").bind(userId),
+    ctx.db.prepare("DELETE FROM user_emails WHERE user_id = ?").bind(userId),
     ctx.db.prepare("DELETE FROM task_assignees WHERE user_id = ?").bind(userId),
     ctx.db.prepare("DELETE FROM meeting_attendees WHERE user_id = ?").bind(userId),
     ctx.db

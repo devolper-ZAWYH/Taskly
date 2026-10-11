@@ -7,6 +7,8 @@ import * as React from "react"
 import { PageHeader } from "@/components/shell/page-header"
 import { Badge } from "@/components/ui/badge"
 import { useCurrentUser } from "@/features/auth/use-auth"
+import { useMyInvitations } from "@/features/users/hooks/use-users"
+import { MyInvitations } from "@/features/workspace/my-invitations"
 import { useMyWorkspaces, workspacePath } from "@/features/workspace/workspace-context"
 import { useLocale } from "@/lib/i18n/locale-provider"
 import { getLastWorkspaceId } from "@/lib/preferences"
@@ -18,22 +20,25 @@ function WorkspacesPicker() {
   const router = useRouter()
   const auto = useSearchParams().get("auto") === "1"
   const { data: workspaces, isPending } = useMyWorkspaces()
+  const invitations = useMyInvitations()
+  const waiting = invitations.data ?? []
 
-  // On arrival (login, "/"), skip the picker when the choice is obvious.
+  // On arrival (login, "/"), skip the picker when the choice is obvious and
+  // no invitation is waiting for an answer.
   const target = React.useMemo(() => {
-    if (!auto || !workspaces) return null
+    if (!auto || !workspaces || !invitations.data || invitations.data.length > 0) return null
     if (me.isOperator) return "/platform"
     const own = workspaces.filter((w) => !w.viaOperator && w.account.active)
     if (own.length === 1) return workspacePath(own[0].account.id, "/dashboard")
     const last = own.find((w) => w.account.id === getLastWorkspaceId(me.id))
     return last ? workspacePath(last.account.id, "/dashboard") : null
-  }, [auto, workspaces, me.isOperator, me.id])
+  }, [auto, workspaces, invitations.data, me.isOperator, me.id])
 
   React.useEffect(() => {
     if (target) router.replace(target)
   }, [target, router])
 
-  if (isPending || target) {
+  if (isPending || invitations.isPending || target) {
     return (
       <div className="grid place-items-center py-24">
         <Loader2Icon className="size-5 animate-spin text-foreground-muted" />
@@ -48,6 +53,7 @@ function WorkspacesPicker() {
         title={t("workspaces.title")}
         subtitle={t("workspaces.subtitle")}
       />
+      {waiting.length > 0 ? <MyInvitations invitations={waiting} /> : null}
       {workspaces && workspaces.length > 0 ? (
         <ul className="grid gap-3 sm:grid-cols-2">
           {workspaces.map((w) => (
@@ -86,9 +92,11 @@ function WorkspacesPicker() {
           ))}
         </ul>
       ) : (
-        <p className="rounded-md border border-dashed px-4 py-12 text-center text-sm text-foreground-muted">
-          {t("workspaces.none")}
-        </p>
+        waiting.length === 0 ? (
+          <p className="rounded-md border border-dashed px-4 py-12 text-center text-sm text-foreground-muted">
+            {t("workspaces.none")}
+          </p>
+        ) : null
       )}
     </div>
   )

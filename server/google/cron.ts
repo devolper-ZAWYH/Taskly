@@ -16,7 +16,7 @@ const WATCHED_MINUTES = 6 * 60
 const KEEP_FAILED_DAYS = 14
 
 export async function runGoogleSync(ctx: Ctx, at: Date): Promise<number> {
-  if (!googleConfigured(ctx.env)) return 0
+  if (!(await googleConfigured(ctx))) return 0
   const now = at.toISOString()
   const dayAgo = new Date(at.getTime() - 86_400_000).toISOString()
   const containers = await all<{

@@ -3,12 +3,13 @@ import type { Page, Task, TaskFilters, TaskInput, TaskScope } from "@/lib/types"
 
 export {
   canChangeTaskStatus,
-  canCreateTask,
+  canCreateSharedTask,
   canDeleteTask,
   canEditTask,
   canViewMeeting,
   canViewTask,
   isClosed,
+  isOwnPrivateTask,
   MEMBER_STATUSES,
   type Viewer,
 } from "@/lib/permissions"
@@ -25,9 +26,8 @@ export const listTasks = (
   },
 ): Promise<Page<Task>> => rpc("listTasks", accountId, params)
 
-/** Look up by id or display reference (`T-12` / `12`) within the workspace. */
-export const getTask = (accountId: string, ref: string): Promise<Task> =>
-  rpc("getTask", accountId, ref)
+export const getTask = (accountId: string, id: string): Promise<Task> =>
+  rpc("getTask", accountId, id)
 
 export const createTask = (accountId: string, input: TaskInput): Promise<Task> =>
   rpc("createTask", accountId, input)

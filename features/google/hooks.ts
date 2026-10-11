@@ -95,7 +95,7 @@ function refreshStatusOn(queryClient: QueryClient, error: unknown) {
 export function useSyncGoogleNow() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: syncGoogleNow,
+    mutationFn: (retryFailed: boolean) => syncGoogleNow(retryFailed),
     onSuccess: (status) => {
       queryClient.setQueryData(googleKeys.status, status)
       return Promise.all([

@@ -25,6 +25,9 @@ export const setNotificationPref = (
 
 export const getPushPublicKey = (): Promise<string | null> => rpc("getPushPublicKey")
 
+/** Whether the server can send email (otherwise the Email column is off). */
+export const getEmailAvailable = (): Promise<boolean> => rpc("getEmailAvailable")
+
 export const savePushSubscription = (subscription: { endpoint: string }): Promise<void> =>
   rpc("savePushSubscription", subscription)
 

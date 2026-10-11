@@ -71,6 +71,17 @@ export function time(value: unknown, optional = true): string {
   return v
 }
 
+/** An IANA zone the runtime knows (e.g. "Asia/Qatar"). */
+export function timeZone(value: unknown): string {
+  const zone = str(value, 64)
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: zone })
+  } catch {
+    bad()
+  }
+  return zone
+}
+
 export const ROLES = ["administrator", "member"] as const satisfies readonly Role[]
 export const LOCALES = ["en", "ar"] as const satisfies readonly Locale[]
 export const STATUSES = [
@@ -87,7 +98,12 @@ export const PRIORITIES = [
   "high",
   "urgent",
 ] as const satisfies readonly TaskPriority[]
-export const SCOPES = ["assigned", "completed", "all"] as const satisfies readonly TaskScope[]
+export const SCOPES = [
+  "mine",
+  "assigned",
+  "all",
+  "completed",
+] as const satisfies readonly TaskScope[]
 
 export const DUE_FILTERS = [
   "overdue",
@@ -139,6 +155,8 @@ export function taskInput(value: unknown): TaskInput {
     dueTime: time(v.dueTime),
     assigneeIds: ids(v.assigneeIds),
     meetingId: v.meetingId == null ? null : str(v.meetingId, 100),
+    private: v.private === undefined ? false : bool(v.private),
+    googleSync: v.googleSync === undefined ? false : bool(v.googleSync),
   }
 }
 
@@ -157,6 +175,7 @@ export function taskPatch(value: unknown): Partial<TaskInput> {
   if (v.assigneeIds !== undefined) patch.assigneeIds = ids(v.assigneeIds)
   if (v.meetingId !== undefined)
     patch.meetingId = v.meetingId === null ? null : str(v.meetingId, 100)
+  if (v.googleSync !== undefined) patch.googleSync = bool(v.googleSync)
   return patch
 }
 

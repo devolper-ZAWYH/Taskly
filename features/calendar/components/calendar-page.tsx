@@ -36,7 +36,6 @@ import {
 import { PersonalEventPanel } from "@/features/google/personal-event-panel"
 import { toEventSpan, toEventSpans, type EventSpan } from "@/features/google/personal-events"
 import { useWorkspace, useWorkspacePath } from "@/features/workspace/workspace-context"
-import { formatTaskRef } from "@/features/tasks/lib/task-meta"
 import { updateMe } from "@/lib/api/auth"
 import { useLocale } from "@/lib/i18n/locale-provider"
 import type { CalendarPreference, Meeting, PersonalEvent, Task } from "@/lib/types"
@@ -123,7 +122,7 @@ export function CalendarPage(): React.ReactElement {
     setParams({ view: nextView, date: toDateKey(nextDate) })
 
   const openMeeting = (meeting: Meeting) => setParams({ meeting: meeting.id })
-  const openTask = (task: Task) => router.push(wsPath(`/tasks?task=${formatTaskRef(task.number)}`))
+  const openTask = (task: Task) => router.push(wsPath(`/tasks?task=${task.id}`))
   const openEvent = (span: EventSpan) => setEventPanel({ span, open: true })
 
   /** After saving a personal event: make sure it's visible, then show it. */
