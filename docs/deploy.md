@@ -55,6 +55,10 @@ adds a migration, before deploying that update.
 yarn deploy
 ```
 
+The first time on a new account it may stop with "You need to register a
+workers.dev subdomain": open the link it prints, pick a subdomain, and run it
+again.
+
 It prints the address, `https://zawyh.<subdomain>.workers.dev`. The Workers AI
 binding and the cron jobs (reminders hourly; Google sync and translation
 retries every 5 minutes) come from `wrangler.jsonc` automatically.
@@ -91,7 +95,8 @@ npx wrangler d1 execute DB --remote --file operator.sql
 ```
 
 It prints a password once. Sign in with it, change it in Settings, and delete
-`operator.sql`.
+`operator.sql`. To choose the password yourself, add `--ask-password`: it's
+asked twice and never shown.
 
 ## 7. Platform → Settings
 

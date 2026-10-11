@@ -3,6 +3,9 @@
   // OpenNext's app plus a scheduled handler (due date reminders).
   "main": "custom-worker.ts",
   "name": "zawyh",
+  // Zawyh's Cloudflare account: deploys and remote commands always go here,
+  // whoever is signed in (docs/deploy.md).
+  "account_id": "714b06da068d56e9e0c1d90cffabad06",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "assets": {
@@ -19,7 +22,7 @@
     {
       "binding": "DB",
       "database_name": "zawyh-db",
-      "database_id": "d998695b-3bdb-47c7-8ba5-4cbf01bcd410",
+      "database_id": "d0a07e8b-983c-4345-a299-bfd893b1184d",
       "migrations_dir": "migrations"
     }
   ],
