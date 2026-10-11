@@ -118,6 +118,16 @@ export type Task = {
   updatedAt: string
 }
 
+/** A machine translation of one field (Arabic ↔ English). */
+export type FieldTranslation = {
+  /** The language it was written in. */
+  from: "en" | "ar"
+  /** The language of `text`. */
+  lang: "en" | "ar"
+  text: string
+  status: "pending" | "done" | "failed"
+}
+
 export type Meeting = {
   id: string
   accountId: string
@@ -134,6 +144,8 @@ export type Meeting = {
   organizerId: string
   createdAt: string
   updatedAt: string
+  /** Title and agenda in the other language (set when reading one meeting). */
+  translations?: { title?: FieldTranslation; notes?: FieldTranslation }
 }
 
 /**
@@ -426,6 +438,16 @@ export type PlatformSettings = {
     ready: boolean
   }
   push: { source: SettingSource; publicKey: string; ready: boolean; devices: number }
+  translation: {
+    source: SettingSource
+    /** "" when translation is off. */
+    provider: string
+    keySet: boolean
+    keyId: string
+    region: string
+    model: string
+    ready: boolean
+  }
 }
 
 /** One group to save. An empty secret keeps the current one. */
@@ -441,6 +463,15 @@ export type PlatformSettingsInput =
       password: string
     }
   | { group: "google"; clientId: string; clientSecret: string }
+  | {
+      group: "translation"
+      /** "" turns translation off. */
+      provider: string
+      key: string
+      keyId: string
+      region: string
+      model: string
+    }
 
 /** The signed-in person's email addresses (Settings → Email addresses). */
 export type MyEmails = {

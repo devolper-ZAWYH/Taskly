@@ -10,6 +10,10 @@ export const listMeetings = (
   params: { from: string; to: string },
 ): Promise<Meeting[]> => rpc("listMeetings", accountId, params)
 
+/** Run a meeting's title/agenda translation again (administrators). */
+export const retranslateMeeting = (accountId: string, id: string): Promise<Meeting> =>
+  rpc("retranslateMeeting", accountId, id)
+
 export const getMeeting = (accountId: string, id: string): Promise<Meeting> =>
   rpc("getMeeting", accountId, id)
 

@@ -18,6 +18,8 @@ export type Ctx = {
   clearSessionCookie: () => void
   /** Run work after the response is sent (e.g. push delivery). */
   waitUntil: (promise: Promise<unknown>) => void
+  /** The caller's network address, when there is a request (sign-in throttling). */
+  ip?: string
   env: CloudflareEnv
   /** Memoized `requireUser` result for this request. */
   user?: User & { passwordHash: string }

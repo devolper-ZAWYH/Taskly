@@ -12,6 +12,7 @@ import { hashPassword, hashToken, verifyPassword } from "@/server/crypto"
 import {
   all,
   avatarUrl,
+  first,
   nowIso,
   run,
   toAccount,
@@ -40,12 +41,44 @@ const toPublic = ({ passwordHash: _hash, ...user }: PublicUser & { passwordHash:
 const DUMMY_HASH =
   "pbkdf2-sha256$100000$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 
+/** Sign-in throttling: failures allowed per email and per network address in the window. */
+const FAILURE_WINDOW_MS = 15 * 60_000
+const FAILURES_PER_EMAIL = 5
+const FAILURES_PER_IP = 30
+
 export async function login(ctx: Ctx, email: unknown, pass: unknown): Promise<PublicUser> {
   const normalized = normalizeEmail(str(email, 254))
+  const keys = { email: `email:${normalized}`, ip: `ip:${ctx.ip ?? "unknown"}` }
+  const since = new Date(Date.now() - FAILURE_WINDOW_MS).toISOString()
+  // Checked before the password, and the same whether or not the account exists.
+  const recent = await first<{ by_email: number; by_ip: number }>(
+    ctx.db,
+    `SELECT SUM(key = ?) AS by_email, SUM(key = ?) AS by_ip FROM login_failures
+     WHERE key IN (?, ?) AND failed_at > ?`,
+    keys.email,
+    keys.ip,
+    keys.email,
+    keys.ip,
+    since,
+  )
+  if ((recent?.by_email ?? 0) >= FAILURES_PER_EMAIL || (recent?.by_ip ?? 0) >= FAILURES_PER_IP) {
+    throw new AppError("tooManyAttempts")
+  }
   // Any of their confirmed addresses signs them in.
   const row = await userByEmail(ctx.db, normalized)
   const ok = await verifyPassword(str(pass, 200), row?.password_hash ?? DUMMY_HASH)
-  if (!row || !ok) throw new AppError("invalidCredentials")
+  if (!row || !ok) {
+    const now = nowIso()
+    await ctx.db.batch([
+      ctx.db.prepare("DELETE FROM login_failures WHERE failed_at <= ?").bind(since),
+      ctx.db
+        .prepare("INSERT INTO login_failures (key, failed_at) VALUES (?, ?), (?, ?)")
+        .bind(keys.email, now, keys.ip, now),
+    ])
+    throw new AppError("invalidCredentials")
+  }
+  // Signed in: this address starts afresh.
+  await run(ctx.db, "DELETE FROM login_failures WHERE key = ?", keys.email)
   const user = toUser(row)
   if (!user.active) throw new AppError("accountDisabled")
   await startSession(ctx, user.id)

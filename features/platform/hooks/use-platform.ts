@@ -9,6 +9,7 @@ import {
   resetPlatformSettings,
   savePlatformSettings,
   sendTestEmail,
+  testTranslation,
 } from "@/lib/api/platform-settings"
 import {
   attachUser,
@@ -174,4 +175,8 @@ export const useGeneratePushKeys = () => useSettingsMutation(() => generatePushK
 
 export function useSendTestEmail() {
   return useMutation({ mutationFn: sendTestEmail })
+}
+
+export function useTestTranslation() {
+  return useMutation({ mutationFn: testTranslation })
 }

@@ -33,8 +33,20 @@ SMTP_USER=
 SMTP_PASS=
 MAIL_FROM=
 
-# Testing only: mock servers instead of Google (scripts/google-mock.mjs) and
-# instead of the mail server (scripts/smtp-mock.mjs: SMTP_HOST=localhost,
-# SMTP_PORT=2525, SMTP_SECURE=false).
+# Arabic ↔ English translation of meeting titles and agendas. Provider: azure,
+# google, deepl, amazon, cloudflare_llm, cloudflare_m2m100 or anthropic.
+# TRANSLATE_KEY is the API key (Amazon: secret access key); TRANSLATE_KEY_ID is
+# Amazon's access key ID; TRANSLATE_REGION is Azure's (optional) or Amazon's;
+# TRANSLATE_MODEL overrides the model for cloudflare_llm / anthropic.
+TRANSLATE_PROVIDER=
+TRANSLATE_KEY=
+TRANSLATE_KEY_ID=
+TRANSLATE_REGION=
+TRANSLATE_MODEL=
+
+# Testing only: mock servers instead of Google (scripts/google-mock.mjs), the
+# mail server (scripts/smtp-mock.mjs: SMTP_HOST=localhost, SMTP_PORT=2525,
+# SMTP_SECURE=false) and the translation services (scripts/translate-mock.mjs).
 GOOGLE_API_ORIGIN=
 GOOGLE_OAUTH_ORIGIN=
+TRANSLATE_API_ORIGIN=

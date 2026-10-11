@@ -1,4 +1,12 @@
-# Cloudflare static-asset headers.
+# Cloudflare static-asset headers (files served without running Next; pages
+# and API responses get the same security headers from next.config.ts).
+/*
+  Content-Security-Policy: frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+
 /sw.js
   Cache-Control: no-cache
   Content-Type: application/javascript; charset=utf-8

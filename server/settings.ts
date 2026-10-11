@@ -1,6 +1,6 @@
 /**
  * Deployment settings: the app's public URL, email (SMTP), the Google OAuth
- * client and the push key pair. Operators edit them in Platform → Settings,
+ * client, the push key pair and the translation provider. Operators edit them in Platform → Settings,
  * so one build serves every deployment without redeploying.
  *
  * Each group comes wholly from one place: the console if anything of that
@@ -14,7 +14,7 @@ import type { Ctx } from "@/server/context"
 import { all } from "@/server/db"
 import { decryptToken, encryptToken } from "@/server/google/tokens"
 
-export const SETTING_GROUPS = ["app", "mail", "google", "push"] as const
+export const SETTING_GROUPS = ["app", "mail", "google", "push", "translation"] as const
 export type SettingGroup = (typeof SETTING_GROUPS)[number]
 export type SettingSource = "console" | "environment" | "unset"
 
@@ -31,6 +31,12 @@ export const SETTING_KEYS = {
   google_client_secret: { group: "google", env: "GOOGLE_CLIENT_SECRET", secret: true },
   vapid_public_key: { group: "push", env: "VAPID_PUBLIC_KEY", secret: false },
   vapid_private_key: { group: "push", env: "VAPID_PRIVATE_KEY", secret: true },
+  // Which service translates Arabic ↔ English, and its credentials (server/translate).
+  translate_provider: { group: "translation", env: "TRANSLATE_PROVIDER", secret: false },
+  translate_key: { group: "translation", env: "TRANSLATE_KEY", secret: true },
+  translate_key_id: { group: "translation", env: "TRANSLATE_KEY_ID", secret: false },
+  translate_region: { group: "translation", env: "TRANSLATE_REGION", secret: false },
+  translate_model: { group: "translation", env: "TRANSLATE_MODEL", secret: false },
 } as const satisfies Record<string, { group: SettingGroup; env: keyof CloudflareEnv; secret: boolean }>
 
 export type SettingKey = keyof typeof SETTING_KEYS

@@ -1,8 +1,11 @@
 # Plan: Trilingual meeting agendas (English · العربية · اردو)
 
-Status: proposal; nothing is implemented. Written 2026-10-11 against commit
-`85b2280`. This plan stands on its own; Google sync is a separate plan:
-[plan-google-sync.md](plan-google-sync.md).
+Status: **superseded** (2026-10-12). Translation was built differently: Arabic
+↔ English only, through a provider chosen in Platform → Settings (Azure,
+Google, DeepL, Amazon, Cloudflare Workers AI or Anthropic) instead of a
+self-hosted NLLB server, whose licence is non-commercial. See the README
+("Arabic ↔ English translation") and `server/translate/`. Urdu and a
+"Written in" picker were not built. The text below is kept for reference.
 
 ## 1. Requirement
 

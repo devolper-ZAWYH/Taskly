@@ -1,6 +1,13 @@
 "use client"
 
-import { CheckIcon, CopyIcon, KeyRoundIcon, MailIcon, TriangleAlertIcon } from "lucide-react"
+import {
+  CheckIcon,
+  CopyIcon,
+  KeyRoundIcon,
+  LanguagesIcon,
+  MailIcon,
+  TriangleAlertIcon,
+} from "lucide-react"
 import * as React from "react"
 import { ConfirmDialog } from "@/components/shell/confirm-dialog"
 import { FormError, FormRow } from "@/components/shell/form-row"
@@ -9,6 +16,7 @@ import { PasswordInput } from "@/components/shell/password-input"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { toastManager } from "@/components/ui/toast"
@@ -19,12 +27,14 @@ import {
   useResetPlatformSettings,
   useSavePlatformSettings,
   useSendTestEmail,
+  useTestTranslation,
 } from "@/features/platform/hooks/use-platform"
 import { useLocale } from "@/lib/i18n/locale-provider"
+import { PROVIDER_SPECS, TRANSLATION_PROVIDERS, type TranslationProvider } from "@/lib/translation"
 import type { PlatformSettings, SettingSource } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
-type Group = "app" | "mail" | "google" | "push"
+type Group = "app" | "mail" | "google" | "push" | "translation"
 
 /** Platform → Settings: the deployment's address, email, Google client and push keys. */
 export function PlatformSettingsPage(): React.ReactElement {
@@ -63,6 +73,10 @@ export function PlatformSettingsPage(): React.ReactElement {
             settings={settings.data}
           />
           <PushSection settings={settings.data} />
+          <TranslationSection
+            key={`translation:${JSON.stringify(settings.data.translation)}`}
+            settings={settings.data}
+          />
         </>
       )}
     </div>
@@ -482,6 +496,165 @@ function PushSection({ settings }: { settings: PlatformSettings }): React.ReactE
           toastManager.add({ type: "success", title: t("platform.settings.push.generated") })
         }}
       />
+    </Section>
+  )
+}
+
+function TranslationSection({ settings }: { settings: PlatformSettings }): React.ReactElement {
+  const { t, errorMessage } = useLocale()
+  const save = useSavePlatformSettings()
+  const test = useTestTranslation()
+  const saved = useSaved()
+  const current = settings.translation
+  const [provider, setProvider] = React.useState(current.provider)
+  const [key, setKey] = React.useState("")
+  const [keyId, setKeyId] = React.useState(current.keyId)
+  const [region, setRegion] = React.useState(current.region)
+  const [model, setModel] = React.useState(current.model)
+  const spec = provider ? PROVIDER_SPECS[provider as TranslationProvider] : null
+  // A saved key only carries over while the same service stays selected.
+  const keySaved = current.keySet && provider === current.provider
+  const label = (p: string) =>
+    p ? t(`platform.settings.translation.providers.${p as TranslationProvider}`) : t("platform.settings.translation.off")
+
+  return (
+    <Section
+      title={t("platform.settings.translation.title")}
+      hint={t("platform.settings.translation.hint")}
+      group="translation"
+      source={current.source}
+      status={{
+        ready: current.ready,
+        label: current.ready
+          ? t("platform.settings.translation.ready")
+          : t("platform.settings.translation.notReady"),
+      }}
+    >
+      <form
+        className="flex flex-col gap-4"
+        onSubmit={(e) => {
+          e.preventDefault()
+          save.mutate(
+            { group: "translation", provider, key, keyId, region, model },
+            { onSuccess: saved },
+          )
+        }}
+      >
+        <FormRow label={t("platform.settings.translation.provider")} htmlFor="translation-provider">
+          <Select
+            value={provider || "off"}
+            onValueChange={(value) => {
+              const next = !value || value === "off" ? "" : value
+              setProvider(next)
+              setKey("")
+              setModel(next === current.provider ? current.model : "")
+            }}
+          >
+            <SelectTrigger id="translation-provider" data-testid="translation-provider">
+              <span className="truncate">{label(provider)}</span>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="off">{t("platform.settings.translation.off")}</SelectItem>
+              {TRANSLATION_PROVIDERS.map((p) => (
+                <SelectItem key={p} value={p}>
+                  {label(p)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FormRow>
+        {provider ? (
+          <p className="-mt-2 text-xs text-foreground-muted">
+            {t(`platform.settings.translation.notes.${provider as TranslationProvider}`)}
+          </p>
+        ) : null}
+
+        {spec?.keyId ? (
+          <FormRow label={t("platform.settings.translation.keyId")} htmlFor="translation-key-id">
+            <Input
+              id="translation-key-id"
+              dir="ltr"
+              autoComplete="off"
+              value={keyId}
+              onChange={(e) => setKeyId(e.target.value)}
+            />
+          </FormRow>
+        ) : null}
+        {spec?.key ? (
+          <FormRow
+            label={
+              provider === "amazon"
+                ? t("platform.settings.translation.keyAmazon")
+                : t("platform.settings.translation.key")
+            }
+            htmlFor="translation-key"
+            hint={keySaved ? t("platform.settings.keepSecret") : undefined}
+          >
+            <PasswordInput id="translation-key" value={key} onChange={setKey} autoComplete="off" />
+          </FormRow>
+        ) : null}
+        {spec?.region ? (
+          <FormRow
+            label={t("platform.settings.translation.region")}
+            htmlFor="translation-region"
+            hint={
+              provider === "amazon"
+                ? t("platform.settings.translation.regionAmazonHint")
+                : t("platform.settings.translation.regionAzureHint")
+            }
+          >
+            <Input
+              id="translation-region"
+              dir="ltr"
+              autoComplete="off"
+              value={region}
+              onChange={(e) => setRegion(e.target.value)}
+            />
+          </FormRow>
+        ) : null}
+        {spec?.model ? (
+          <FormRow label={t("platform.settings.translation.model")} htmlFor="translation-model">
+            <Input
+              id="translation-model"
+              dir="ltr"
+              autoComplete="off"
+              placeholder={spec.model}
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+            />
+          </FormRow>
+        ) : null}
+
+        <FormError message={save.error ? errorMessage(save.error) : null} />
+        <div className="flex flex-wrap gap-2">
+          <Button type="submit" loading={save.isPending}>
+            {t("platform.settings.save")}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!current.ready}
+            loading={test.isPending}
+            onClick={() => test.mutate(undefined, { onError: (error) => toastManager.add({ type: "error", title: errorMessage(error) }) })}
+          >
+            <LanguagesIcon />
+            {t("platform.settings.translation.test")}
+          </Button>
+        </div>
+        {test.data ? (
+          test.data.ok ? (
+            <div className="flex flex-col gap-2 rounded-md border p-3 text-sm" data-testid="translation-test">
+              <p className="text-xs font-medium text-success">{t("platform.settings.translation.testOk")}</p>
+              <p dir="rtl" lang="ar">{test.data.toArabic}</p>
+              <p dir="ltr" lang="en">{test.data.toEnglish}</p>
+            </div>
+          ) : (
+            <FormError
+              message={t("platform.settings.translation.testFailed", { error: test.data.error ?? "" })}
+            />
+          )
+        ) : null}
+      </form>
     </Section>
   )
 }

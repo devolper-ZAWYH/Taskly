@@ -3,6 +3,7 @@
 // Runtime types generated with workerd@1.20261001.1 2026-10-01 global_fetch_strictly_public,nodejs_compat
 interface __BaseEnv_CloudflareEnv {
 	DB: D1Database;
+	AI: Ai;
 	ASSETS: Fetcher;
 	VAPID_PUBLIC_KEY: string;
 	VAPID_SUBJECT: string;
@@ -20,6 +21,12 @@ interface __BaseEnv_CloudflareEnv {
 	SMTP_USER: string;
 	SMTP_PASS: string;
 	MAIL_FROM: string;
+	TRANSLATE_PROVIDER: string;
+	TRANSLATE_KEY: string;
+	TRANSLATE_KEY_ID: string;
+	TRANSLATE_REGION: string;
+	TRANSLATE_MODEL: string;
+	TRANSLATE_API_ORIGIN: string;
 	WORKER_SELF_REFERENCE: Service<typeof import("./custom-worker").default>;
 }
 declare namespace Cloudflare {
@@ -33,7 +40,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "VAPID_PUBLIC_KEY" | "VAPID_SUBJECT" | "NEXTJS_ENV" | "APP_ORIGIN" | "VAPID_PRIVATE_KEY" | "GOOGLE_CLIENT_ID" | "GOOGLE_CLIENT_SECRET" | "ENCRYPTION_KEY" | "GOOGLE_API_ORIGIN" | "GOOGLE_OAUTH_ORIGIN" | "SMTP_HOST" | "SMTP_PORT" | "SMTP_SECURE" | "SMTP_USER" | "SMTP_PASS" | "MAIL_FROM">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "VAPID_PUBLIC_KEY" | "VAPID_SUBJECT" | "NEXTJS_ENV" | "APP_ORIGIN" | "VAPID_PRIVATE_KEY" | "GOOGLE_CLIENT_ID" | "GOOGLE_CLIENT_SECRET" | "ENCRYPTION_KEY" | "GOOGLE_API_ORIGIN" | "GOOGLE_OAUTH_ORIGIN" | "SMTP_HOST" | "SMTP_PORT" | "SMTP_SECURE" | "SMTP_USER" | "SMTP_PASS" | "MAIL_FROM" | "TRANSLATE_PROVIDER" | "TRANSLATE_KEY" | "TRANSLATE_KEY_ID" | "TRANSLATE_REGION" | "TRANSLATE_MODEL" | "TRANSLATE_API_ORIGIN">> {}
 }
 
 // Begin runtime types

@@ -30,6 +30,9 @@ Created by `yarn db:seed:local`. The live site was seeded with
 
 ## Deploy
 
+A new deployment (another Cloudflare account): follow
+[docs/deploy.md](docs/deploy.md). Updating an existing one:
+
 ```bash
 yarn db:migrate:remote  # apply new files in migrations/ to the live database
 yarn deploy             # build and upload the Worker
@@ -109,6 +112,18 @@ printed once.
   and **Completed**. "Related
   to" is offered on the task page only (default: nothing); tasks created
   from a meeting are linked to it automatically.
+- **Arabic ↔ English translation**: a meeting's title and agenda written in
+  one language are saved in the other too, after the save (it never waits),
+  with retries every 5 minutes. The meeting panel shows the translation under
+  the original, marked "Machine translated"; administrators can **Translate
+  again**. Only changed fields are re-translated (edits from Google Calendar
+  too). Operators pick the service in **Platform → Settings → Translation**:
+  Microsoft Azure Translator, Google Cloud Translation, DeepL, Amazon
+  Translate, Cloudflare Workers AI (an AI model, or m2m100; no key, uses the
+  deployment's `AI` binding) or Anthropic Claude (default `claude-haiku-5-5`),
+  with **Test translation**. Code: `server/translate/`. Locally,
+  `node scripts/translate-mock.mjs` stands in for the paid services
+  (`TRANSLATE_API_ORIGIN` in `.dev.vars`).
 - **Calendar**: Month and Week views (an agenda list on phones), meetings with
   attendees, task due dates, and meetings → **Action items** (tasks related to
   the meeting; members see only theirs).
@@ -140,6 +155,11 @@ printed once.
     members list, and its notification emails go there.
   Unconfirmed addresses match nothing. Up to 5 extra addresses; any confirmed
   one can become the primary. Operators find people by any of their addresses.
+- **Sign-in protection**: after 5 failed sign-ins for one email in 15
+  minutes, that email is blocked for 15 minutes (even with the right password;
+  **Forgot password?** still works); one network address is capped at 30
+  failures. Pages and files are sent with security headers (no framing,
+  `nosniff`, HSTS) from `next.config.ts` and `public/_headers`.
 - **Forgot password?** (on the sign-in page, needs email set up): emails a
   one-time link valid for 1 hour (at most one email a minute). The answer is
   the same whether or not the address has an account. Choosing a new password

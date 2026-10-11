@@ -47,6 +47,7 @@ export const api = {
   createMeeting: meetings.createMeeting,
   updateMeeting: meetings.updateMeeting,
   deleteMeeting: meetings.deleteMeeting,
+  retranslateMeeting: meetings.retranslateMeeting,
 
   listPeople: members.listPeople,
   listMembers: members.listMembers,
@@ -114,6 +115,7 @@ export const api = {
   resetPlatformSettings: settings.resetPlatformSettings,
   sendTestEmail: settings.sendTestEmail,
   generatePushKeys: settings.generatePushKeys,
+  testTranslation: settings.testTranslation,
 }
 
 export type Api = typeof api

@@ -4,6 +4,12 @@
  * (server/settings.ts). Secrets go in encrypted and never come back out.
  */
 import { AppError } from "@/lib/api/core"
+import {
+  PROVIDER_SPECS,
+  providerReady,
+  TRANSLATION_PROVIDERS,
+  type TranslationProvider,
+} from "@/lib/translation"
 import type { PlatformSettings, PlatformSettingsInput } from "@/lib/types"
 import { requireOperator, type Ctx } from "@/server/context"
 import { first, run } from "@/server/db"
@@ -19,6 +25,8 @@ import {
   settingsOf,
   type SettingGroup,
 } from "@/server/settings"
+import { translatorFor } from "@/server/translate/providers"
+import { translateText } from "@/server/translate/text"
 import { assertEmail, bool, int, isObject, oneOf, str } from "@/server/validate"
 
 const LOCAL_HOSTS = ["localhost", "127.0.0.1", "::1"]
@@ -61,6 +69,19 @@ async function view(ctx: Ctx): Promise<PlatformSettings> {
       ready: Boolean(values.vapid_public_key && values.vapid_private_key),
       devices: devices?.n ?? 0,
     },
+    translation: {
+      source: sources.translation,
+      provider: values.translate_provider === "none" ? "" : (values.translate_provider ?? ""),
+      keySet: Boolean(values.translate_key),
+      keyId: values.translate_key_id ?? "",
+      region: values.translate_region ?? "",
+      model: values.translate_model ?? "",
+      ready: providerReady(values.translate_provider, {
+        key: values.translate_key,
+        keyId: values.translate_key_id,
+        region: values.translate_region,
+      }),
+    },
   }
 }
 
@@ -79,8 +100,22 @@ function originOf(value: unknown): string {
 
 function settingsInput(value: unknown): PlatformSettingsInput {
   if (!isObject(value)) throw new AppError("badRequest")
-  const group = oneOf(value.group, ["app", "mail", "google"] as const)
+  const group = oneOf(value.group, ["app", "mail", "google", "translation"] as const)
   if (group === "app") return { group, origin: originOf(value.origin) }
+  if (group === "translation") {
+    const provider = str(value.provider, 40)
+    if (provider && !(TRANSLATION_PROVIDERS as readonly string[]).includes(provider)) {
+      throw new AppError("badRequest")
+    }
+    return {
+      group,
+      provider,
+      key: str(value.key, 500).trim(),
+      keyId: str(value.keyId, 200).trim(),
+      region: str(value.region, 60).trim(),
+      model: str(value.model, 200).trim(),
+    }
+  }
   if (group === "google") {
     return {
       group,
@@ -106,6 +141,35 @@ export async function savePlatformSettings(ctx: Ctx, raw: unknown): Promise<Plat
   const current = (await settingsOf(ctx)).values
   if (input.group === "app") {
     await saveGroup(ctx, "app", { app_origin: input.origin }, me.id)
+    return view(ctx)
+  }
+  if (input.group === "translation") {
+    if (!input.provider) {
+      // Off for this deployment, whatever the environment says.
+      await saveGroup(ctx, "translation", { translate_provider: "none" }, me.id)
+      return view(ctx)
+    }
+    const spec = PROVIDER_SPECS[input.provider as TranslationProvider]
+    // An empty key keeps the one in use, if it was for this same provider.
+    const key =
+      input.key ||
+      (current.translate_provider === input.provider ? (current.translate_key ?? "") : "")
+    if (spec.key && !key) throw new AppError("secretRequired")
+    if (spec.keyId && !input.keyId) throw new AppError("badRequest")
+    if (spec.region === "required" && !input.region) throw new AppError("badRequest")
+    if (spec.key && !encryptionKey(ctx.env)) throw new AppError("encryptionKeyMissing")
+    await saveGroup(
+      ctx,
+      "translation",
+      {
+        translate_provider: input.provider,
+        ...(spec.key ? { translate_key: key } : {}),
+        ...(spec.keyId ? { translate_key_id: input.keyId } : {}),
+        ...(spec.region ? { translate_region: input.region } : {}),
+        ...(spec.model ? { translate_model: input.model || spec.model } : {}),
+      },
+      me.id,
+    )
     return view(ctx)
   }
   if (!encryptionKey(ctx.env)) throw new AppError("encryptionKeyMissing")
@@ -203,3 +267,28 @@ export async function generatePushKeys(ctx: Ctx): Promise<PlatformSettings> {
   return view(ctx)
 }
 
+/**
+ * Translate a sample both ways with the current settings, so the operator
+ * sees it works (and how it reads) before relying on it.
+ */
+export async function testTranslation(
+  ctx: Ctx,
+): Promise<{ ok: boolean; toArabic: string; toEnglish: string; error: string | null }> {
+  await requireOperator(ctx)
+  const translator = await translatorFor(ctx)
+  if (!translator) throw new AppError("translationNotConfigured")
+  try {
+    const [toArabic, toEnglish] = await Promise.all([
+      translateText(translator, "Review the quarterly budget before Thursday's meeting.", "en", "ar"),
+      translateText(translator, "مراجعة الميزانية الفصلية قبل اجتماع الخميس.", "ar", "en"),
+    ])
+    return { ok: true, toArabic, toEnglish, error: null }
+  } catch (error) {
+    return {
+      ok: false,
+      toArabic: "",
+      toEnglish: "",
+      error: error instanceof Error ? error.message : String(error),
+    }
+  }
+}

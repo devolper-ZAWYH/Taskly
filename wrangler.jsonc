@@ -23,6 +23,12 @@
       "migrations_dir": "migrations"
     }
   ],
+  // Workers AI, for the Cloudflare translation options (Platform → Settings).
+  // Always remote (real Cloudflare, real usage), even under `next dev`.
+  "ai": {
+    "binding": "AI",
+    "remote": true
+  },
   // No per-deployment vars: the app's address, email, the Google client and
   // the push keys are set in Platform → Settings. The one secret is
   // ENCRYPTION_KEY (`wrangler secret put ENCRYPTION_KEY`, see .dev.vars.example).

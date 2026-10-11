@@ -16,6 +16,12 @@ import {
   type TaskRow,
 } from "@/server/db"
 import { notify } from "@/server/services/notifications"
+import {
+  forgetTranslations,
+  queueTranslations,
+  retryTranslations,
+  translationsOf,
+} from "@/server/translate/service"
 import { assertAssignees, visibleTasks } from "@/server/services/tasks"
 import { date, isObject, meetingInput, str, time } from "@/server/validate"
 
@@ -62,8 +68,18 @@ async function findVisible(
   return { actor, meeting: toMeeting(row) }
 }
 
+/** One meeting, with its title and agenda in the other language when translated. */
 export async function getMeeting(ctx: Ctx, accountId: string, id: unknown): Promise<Meeting> {
-  return (await findVisible(ctx, accountId, id)).meeting
+  const { meeting } = await findVisible(ctx, accountId, id)
+  return { ...meeting, translations: await translationsOf(ctx, "meeting", meeting.id) }
+}
+
+/** Run a meeting's translation again (administrators; e.g. after a failure). */
+export async function retranslateMeeting(ctx: Ctx, accountId: string, id: unknown): Promise<Meeting> {
+  await requireWorkspaceAdmin(ctx, accountId)
+  const { meeting } = await findVisible(ctx, accountId, id)
+  await retryTranslations(ctx, "meeting", meeting.id)
+  return getMeeting(ctx, accountId, meeting.id)
 }
 
 /** A meeting by id within the workspace, whoever is asking (internal use). */
@@ -197,6 +213,8 @@ export async function createMeetingAs(ctx: Ctx, actor: Actor, raw: unknown): Pro
     ...attendeeStatements(ctx, id, input.attendeeIds),
   ])
   const meeting = (await findMeeting(ctx, accountId, id))!
+  // Title and agenda in the other language, after the response.
+  await queueTranslations(ctx, "meeting", meeting.id)
   await notify(ctx, {
     recipients: meeting.attendeeIds,
     actorId: actor.id,
@@ -267,6 +285,8 @@ export async function applyMeetingUpdate(
     ...attendeeStatements(ctx, meeting.id, input.attendeeIds),
   ])
   const next = (await findMeeting(ctx, accountId, meeting.id))!
+  // Only re-translates a field whose text changed (edits from Google too).
+  await queueTranslations(ctx, "meeting", meeting.id)
   const invited = next.attendeeIds.filter((id) => !meeting.attendeeIds.includes(id))
   const common = { actorId: actor.id, accountId, data: meetingData(actor, next), link: meetingLink(next) }
   await notify(ctx, { ...common, recipients: invited, event: "meeting_invited" })
@@ -298,6 +318,7 @@ export async function deleteMeetingAs(ctx: Ctx, actor: Actor, meeting: Meeting):
   if (!canEditMeeting(actor)) throw new AppError("forbidden")
   const accountId = actor.account.id
   await ctx.db.prepare("DELETE FROM meetings WHERE id = ?").bind(meeting.id).run()
+  await forgetTranslations(ctx, "meeting", meeting.id)
   await notify(ctx, {
     recipients: meeting.attendeeIds,
     actorId: actor.id,

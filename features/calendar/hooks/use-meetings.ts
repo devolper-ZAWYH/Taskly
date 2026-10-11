@@ -10,6 +10,7 @@ import {
   listMeetingOptions,
   listMeetings,
   listMeetingTasks,
+  retranslateMeeting,
   updateMeeting,
   type MeetingInput,
 } from "@/lib/api/meetings"
@@ -49,6 +50,21 @@ export function useMeeting(id: string | null) {
     queryKey: meetingKeys.detail(accountId, id ?? ""),
     queryFn: () => getMeeting(accountId, id!),
     enabled: Boolean(id),
+    // While a translation is on its way, look again every few seconds.
+    refetchInterval: (query) =>
+      Object.values(query.state.data?.translations ?? {}).some((t) => t?.status === "pending")
+        ? 3000
+        : false,
+  })
+}
+
+export function useRetranslateMeeting() {
+  const { accountId } = useWorkspace()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => retranslateMeeting(accountId, id),
+    onSuccess: (meeting) =>
+      queryClient.setQueryData(meetingKeys.detail(accountId, meeting.id), meeting),
   })
 }
 

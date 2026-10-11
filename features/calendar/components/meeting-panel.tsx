@@ -1,6 +1,14 @@
 "use client"
 
-import { Loader2Icon, MapPinIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react"
+import {
+  LanguagesIcon,
+  Loader2Icon,
+  MapPinIcon,
+  PencilIcon,
+  PlusIcon,
+  RotateCcwIcon,
+  Trash2Icon,
+} from "lucide-react"
 import * as React from "react"
 import { UserAvatar } from "@/components/shell/user-avatar"
 import { Button } from "@/components/ui/button"
@@ -17,6 +25,7 @@ import { toastManager } from "@/components/ui/toast"
 import {
   useDeleteMeeting,
   useMeeting,
+  useRetranslateMeeting,
   useMeetingTasks,
 } from "@/features/calendar/hooks/use-meetings"
 import { SyncedToGoogle } from "@/features/google/synced-marker"
@@ -28,7 +37,7 @@ import { usePeople } from "@/features/tasks/hooks/use-tasks"
 import { useViewer } from "@/features/workspace/workspace-context"
 import { canEditMeeting } from "@/lib/api/meetings"
 import { useLocale } from "@/lib/i18n/locale-provider"
-import type { Meeting, Task } from "@/lib/types"
+import type { FieldTranslation, Meeting, Task } from "@/lib/types"
 
 /** Side panel for one meeting, driven by `?meeting=<id>`. */
 export function MeetingPanel({
@@ -114,7 +123,12 @@ function MeetingDetail({
             {meeting.startTime}–{meeting.endTime}
           </span>
         </span>
-        <SheetTitle className="font-display mt-1 text-xl leading-snug">{meeting.title}</SheetTitle>
+        <SheetTitle className="font-display mt-1 text-xl leading-snug" dir="auto">
+          {meeting.title}
+        </SheetTitle>
+        {meeting.translations?.title ? (
+          <Translated meetingId={meeting.id} translation={meeting.translations.title} canRetry={canEdit} />
+        ) : null}
         {meeting.location ? (
           <SheetDescription className="flex items-center gap-1.5">
             <MapPinIcon className="size-3.5 shrink-0" />
@@ -177,9 +191,19 @@ function MeetingDetail({
             {meeting.notes ? (
               <>
                 <h3 className="eyebrow pt-1">{t("meetings.panel.notes")}</h3>
-                <p className="text-sm whitespace-pre-wrap text-foreground-secondary">
-                  {meeting.notes}
-                </p>
+                <div className="flex min-w-0 flex-col gap-3">
+                  <p dir="auto" className="text-sm whitespace-pre-wrap text-foreground-secondary">
+                    {meeting.notes}
+                  </p>
+                  {meeting.translations?.notes ? (
+                    <Translated
+                      meetingId={meeting.id}
+                      translation={meeting.translations.notes}
+                      canRetry={canEdit}
+                      block
+                    />
+                  ) : null}
+                </div>
               </>
             ) : null}
           </section>
@@ -284,6 +308,78 @@ function MeetingDetail({
           meetingId: meeting.id,
         }}
       />
+    </div>
+  )
+}
+
+/**
+ * A field in the other language: the machine translation, or its progress.
+ * Administrators can run it again when it failed. `block` for the agenda.
+ */
+function Translated({
+  meetingId,
+  translation,
+  canRetry,
+  block = false,
+}: {
+  meetingId: string
+  translation: FieldTranslation
+  canRetry: boolean
+  block?: boolean
+}): React.ReactElement {
+  const { t, errorMessage } = useLocale()
+  const retry = useRetranslateMeeting()
+  const label = (
+    <span className="inline-flex items-center gap-1 text-[11px] font-medium tracking-wide text-foreground-muted uppercase">
+      <LanguagesIcon className="size-3" aria-hidden="true" />
+      {t(`meetings.panel.translation.${translation.lang}`)}
+      {translation.status === "done" ? ` · ${t("meetings.panel.translation.machine")}` : ""}
+    </span>
+  )
+  return (
+    <div
+      className={block ? "flex flex-col gap-1 rounded-md border border-dashed p-3" : "mt-1 flex flex-col gap-0.5"}
+      data-testid="meeting-translation"
+    >
+      {label}
+      {translation.status === "done" ? (
+        <p
+          dir={translation.lang === "ar" ? "rtl" : "ltr"}
+          lang={translation.lang}
+          className={
+            block
+              ? "text-sm whitespace-pre-wrap text-foreground-secondary"
+              : "text-sm text-foreground-secondary"
+          }
+        >
+          {translation.text}
+        </p>
+      ) : translation.status === "pending" ? (
+        <p className="flex items-center gap-1.5 text-xs text-foreground-muted">
+          <Loader2Icon className="size-3 animate-spin" aria-hidden="true" />
+          {t("meetings.panel.translation.pending")}
+        </p>
+      ) : (
+        <p className="flex flex-wrap items-center gap-2 text-xs text-destructive-foreground">
+          {t("meetings.panel.translation.failed")}
+          {canRetry ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 px-2 text-xs"
+              loading={retry.isPending}
+              onClick={() =>
+                retry.mutate(meetingId, {
+                  onError: (error) => toastManager.add({ type: "error", title: errorMessage(error) }),
+                })
+              }
+            >
+              <RotateCcwIcon />
+              {t("meetings.panel.translation.retry")}
+            </Button>
+          ) : null}
+        </p>
+      )}
     </div>
   )
 }
