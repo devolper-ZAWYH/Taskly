@@ -31,6 +31,6 @@ export const createMeeting = (accountId: string, input: MeetingInput): Promise<M
 export const updateMeeting = (accountId: string, id: string, input: MeetingInput): Promise<Meeting> =>
   rpc("updateMeeting", accountId, id, input)
 
-/** Deletes the meeting; its action-item tasks stay but lose the link. */
+/** Deletes the meeting; its action-item tasks and minutes stay but lose the link. */
 export const deleteMeeting = (accountId: string, id: string): Promise<void> =>
   rpc("deleteMeeting", accountId, id)

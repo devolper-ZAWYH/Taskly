@@ -7,8 +7,9 @@
  * meetings they take part in, and may move those tasks through the workflow
  * (status only). Anyone may create private tasks for themselves: only their
  * creator sees them, administrators included, and the creator fully manages them.
+ * Anyone in a meeting may keep their own minutes of it and choose who reads them.
  */
-import type { Meeting, Role, Task, TaskStatus } from "@/lib/types"
+import type { Meeting, MeetingMinutes, Role, Task, TaskStatus } from "@/lib/types"
 
 /** Who is looking, inside one workspace (role is the workspace role). */
 export type Viewer = { id: string; role: Role }
@@ -73,4 +74,26 @@ export function canViewMeeting(viewer: Viewer, meeting: Meeting): boolean {
 
 export function canEditMeeting(viewer: Viewer): boolean {
   return isAdmin(viewer)
+}
+
+type MinutesAccess = Pick<MeetingMinutes, "authorId" | "visibility" | "sharedWithIds">
+
+/** Anyone who can see a meeting may write their own minutes of it. */
+export function canWriteMinutes(viewer: Viewer, meeting: Meeting): boolean {
+  return canViewMeeting(viewer, meeting)
+}
+
+/**
+ * The author, plus whoever they shared with. Private minutes are the author's
+ * alone, administrators included.
+ */
+export function canViewMinutes(viewer: Viewer, minutes: MinutesAccess): boolean {
+  if (minutes.authorId === viewer.id) return true
+  if (minutes.visibility === "workspace") return true
+  return minutes.visibility === "people" && minutes.sharedWithIds.includes(viewer.id)
+}
+
+/** Only the author edits or deletes minutes. */
+export function canEditMinutes(viewer: Viewer, minutes: Pick<MeetingMinutes, "authorId">): boolean {
+  return minutes.authorId === viewer.id
 }

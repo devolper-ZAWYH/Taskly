@@ -3,7 +3,7 @@
  * shapes from `lib/types`.
  */
 import { getCloudflareContext } from "@opennextjs/cloudflare"
-import type { Account, Meeting, PublicUser, Role, Task, User } from "@/lib/types"
+import type { Account, Meeting, MeetingMinutes, PublicUser, Role, Task, User } from "@/lib/types"
 
 export function getDb(): D1Database {
   return getCloudflareContext().env.DB
@@ -97,6 +97,25 @@ export type MeetingRow = {
   updated_at: string
   /** JSON array, from `MEETING_COLUMNS`. */
   attendee_ids: string
+}
+
+export type MinutesRow = {
+  id: string
+  account_id: string
+  meeting_id: string | null
+  meeting_title: string
+  meeting_date: string
+  author_id: string
+  body: string
+  visibility: MeetingMinutes["visibility"]
+  created_at: string
+  updated_at: string
+  /** From `MINUTES_COLUMNS`: the meeting's title and date when it still exists. */
+  live_title: string
+  live_date: string
+  /** JSON array, from `MINUTES_COLUMNS`. */
+  shared_ids: string
+  meeting_visible: number
 }
 
 export type MemberRow = Omit<UserRow, "password_hash"> & { role: Role; membership_id: string }
@@ -198,6 +217,23 @@ export function toMeeting(row: MeetingRow): Meeting {
     location: row.location,
     attendeeIds: JSON.parse(row.attendee_ids) as string[],
     organizerId: row.organizer_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+export function toMinutes(row: MinutesRow): MeetingMinutes {
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    meetingId: row.meeting_id,
+    meetingTitle: row.live_title,
+    meetingDate: row.live_date,
+    meetingVisible: row.meeting_visible === 1,
+    authorId: row.author_id,
+    body: row.body,
+    visibility: row.visibility,
+    sharedWithIds: JSON.parse(row.shared_ids) as string[],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }

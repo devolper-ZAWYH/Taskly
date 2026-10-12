@@ -37,12 +37,15 @@ export function AssigneePicker({
   onChange,
   disabled,
   addLabel,
+  exclude,
 }: {
   value: string[]
   onChange: (ids: string[]) => void
   disabled?: boolean
   /** Text on the add button; defaults to "Assign people". */
   addLabel?: string
+  /** People who can't be picked (e.g. the author when sharing their own minutes). */
+  exclude?: string[]
 }): React.ReactElement {
   const { t } = useLocale()
   const { data: people } = usePeople()
@@ -50,7 +53,9 @@ export function AssigneePicker({
     .map((id) => people?.find((p) => p.id === id))
     .filter((u): u is NonNullable<typeof u> => Boolean(u))
   // Active people can be picked; already-assigned inactive people stay visible.
-  const options = (people ?? []).filter((p) => p.active || value.includes(p.id))
+  const options = (people ?? []).filter(
+    (p) => (p.active || value.includes(p.id)) && !exclude?.includes(p.id),
+  )
 
   function toggle(id: string, checked: boolean) {
     onChange(checked ? [...value, id] : value.filter((v) => v !== id))

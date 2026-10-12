@@ -3,12 +3,14 @@
  * at the network boundary, so every service re-checks the shape it relies on.
  */
 import { AppError, MIN_PASSWORD_LENGTH } from "@/lib/api/core"
+import { MINUTES_VISIBILITIES } from "@/lib/types"
 import type {
   AddMemberInput,
   DueFilter,
   TaskFilters,
   Locale,
   MeetingInput,
+  MinutesInput,
   Role,
   TaskInput,
   TaskPriority,
@@ -190,6 +192,16 @@ export function meetingInput(value: unknown): MeetingInput {
     endTime: str(v.endTime, 5),
     location: str(v.location, 500),
     attendeeIds: ids(v.attendeeIds),
+  }
+}
+
+export function minutesInput(value: unknown): MinutesInput {
+  if (!isObject(value)) bad()
+  const v = value as Record<string, unknown>
+  return {
+    body: str(v.body, 50_000),
+    visibility: oneOf(v.visibility, MINUTES_VISIBILITIES),
+    sharedWithIds: ids(v.sharedWithIds),
   }
 }
 

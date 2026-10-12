@@ -29,6 +29,7 @@ import {
   useMeetingTasks,
 } from "@/features/calendar/hooks/use-meetings"
 import { SyncedToGoogle } from "@/features/google/synced-marker"
+import { MeetingMinutesSection } from "@/features/minutes/meeting-minutes-section"
 import { AssigneeStack } from "@/features/tasks/components/assignees"
 import { StatusBadge } from "@/features/tasks/components/task-badges"
 import { ConfirmDialog } from "@/components/shell/confirm-dialog"
@@ -207,6 +208,8 @@ function MeetingDetail({
               </>
             ) : null}
           </section>
+
+          <MeetingMinutesSection meeting={meeting} people={people} />
 
           <section className="flex flex-col gap-3 border-t pt-6" data-testid="action-items">
             <div className="flex items-start justify-between gap-3">

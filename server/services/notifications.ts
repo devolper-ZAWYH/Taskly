@@ -33,6 +33,7 @@ const EVENT_KIND = {
   meeting_invited: "meeting_invited",
   meeting_updated: "meeting_changed",
   meeting_cancelled: "meeting_changed",
+  minutes_shared: "minutes_shared",
   workspace_added: "workspace_added",
   workspace_invited: "workspace_added",
   workspace_invite_accepted: "workspace_added",

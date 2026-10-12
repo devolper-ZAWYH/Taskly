@@ -149,6 +149,44 @@ export type Meeting = {
 }
 
 /**
+ * Who can read a set of minutes besides its author: nobody, everyone in the
+ * workspace, or the people it's shared with.
+ */
+export const MINUTES_VISIBILITIES = ["private", "workspace", "people"] as const
+export type MinutesVisibility = (typeof MINUTES_VISIBILITIES)[number]
+
+/** One person's minutes of a meeting. Only the author edits them. */
+export type MeetingMinutes = {
+  id: string
+  accountId: string
+  /** Null once the meeting was deleted (the minutes stay). */
+  meetingId: string | null
+  /** The meeting's current title and date (as last known if it was deleted). */
+  meetingTitle: string
+  meetingDate: string
+  /** The reader can open the meeting itself (minutes can be shared with people who weren't invited). */
+  meetingVisible: boolean
+  authorId: string
+  body: string
+  visibility: MinutesVisibility
+  /** Who it's shared with when `visibility` is "people". */
+  sharedWithIds: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+/** What the author edits. */
+export type MinutesInput = {
+  body: string
+  visibility: MinutesVisibility
+  sharedWithIds: string[]
+}
+
+/** Minutes page tabs: everything you can read, yours, or other people's shared with you. */
+export const MINUTES_SCOPES = ["all", "mine", "shared"] as const
+export type MinutesScope = (typeof MINUTES_SCOPES)[number]
+
+/**
  * Task list tabs. `mine`: your private tasks. `assigned`: workspace tasks
  * assigned to you. `all` (administrators): every workspace task. `completed`:
  * closed ones you can see.
@@ -237,6 +275,7 @@ export const NOTIFICATION_KINDS = [
   "task_reminders",
   "meeting_invited",
   "meeting_changed",
+  "minutes_shared",
   "workspace_added",
   "google_sync",
 ] as const

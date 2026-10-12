@@ -7,6 +7,7 @@ import * as dashboard from "@/server/services/dashboard"
 import * as emails from "@/server/services/emails"
 import * as google from "@/server/services/google"
 import * as meetings from "@/server/services/meetings"
+import * as minutes from "@/server/services/minutes"
 import * as notifications from "@/server/services/notifications"
 import * as passwordLinks from "@/server/services/password-links"
 import * as members from "@/server/services/members"
@@ -48,6 +49,15 @@ export const api = {
   updateMeeting: meetings.updateMeeting,
   deleteMeeting: meetings.deleteMeeting,
   retranslateMeeting: meetings.retranslateMeeting,
+
+  listMeetingMinutes: minutes.listMeetingMinutes,
+  listMinutes: minutes.listMinutes,
+  getMinutes: minutes.getMinutes,
+  createMinutes: minutes.createMinutes,
+  updateMinutes: minutes.updateMinutes,
+  deleteMinutes: minutes.deleteMinutes,
+  translateMinutes: minutes.translateMinutes,
+  getTranslationAvailable: minutes.getTranslationAvailable,
 
   listPeople: members.listPeople,
   listMembers: members.listMembers,

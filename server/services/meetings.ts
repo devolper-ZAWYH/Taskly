@@ -26,9 +26,9 @@ import { assertAssignees, visibleTasks } from "@/server/services/tasks"
 import { date, isObject, meetingInput, str, time } from "@/server/validate"
 
 /** Admins see everything; others see meetings they organize or attend. */
-const VISIBLE = `(? OR m.organizer_id = ? OR EXISTS (SELECT 1 FROM meeting_attendees ma WHERE ma.meeting_id = m.id AND ma.user_id = ?))`
+export const VISIBLE = `(? OR m.organizer_id = ? OR EXISTS (SELECT 1 FROM meeting_attendees ma WHERE ma.meeting_id = m.id AND ma.user_id = ?))`
 
-const visibleBinds = (actor: Actor) => [actor.role === "administrator" ? 1 : 0, actor.id, actor.id]
+export const visibleBinds = (actor: Actor) => [actor.role === "administrator" ? 1 : 0, actor.id, actor.id]
 
 /** Meetings on days in `[from, to]` (YYYY-MM-DD) that the user may see. */
 export async function listMeetings(
@@ -306,7 +306,7 @@ export async function applyMeetingUpdate(
   return next
 }
 
-/** Deletes the meeting; its action-item tasks stay but lose the link. */
+/** Deletes the meeting; its action-item tasks and minutes stay but lose the link. */
 export async function deleteMeeting(ctx: Ctx, accountId: string, id: unknown): Promise<void> {
   const { actor, meeting } = await findVisible(ctx, accountId, id)
   await deleteMeetingAs(ctx, actor, meeting)
@@ -317,7 +317,13 @@ export async function deleteMeeting(ctx: Ctx, accountId: string, id: unknown): P
 export async function deleteMeetingAs(ctx: Ctx, actor: Actor, meeting: Meeting): Promise<void> {
   if (!canEditMeeting(actor)) throw new AppError("forbidden")
   const accountId = actor.account.id
-  await ctx.db.prepare("DELETE FROM meetings WHERE id = ?").bind(meeting.id).run()
+  await ctx.db.batch([
+    // Minutes outlive the meeting; they keep its last title and date.
+    ctx.db
+      .prepare("UPDATE meeting_minutes SET meeting_title = ?, meeting_date = ? WHERE meeting_id = ?")
+      .bind(meeting.title, meeting.date, meeting.id),
+    ctx.db.prepare("DELETE FROM meetings WHERE id = ?").bind(meeting.id),
+  ])
   await forgetTranslations(ctx, "meeting", meeting.id)
   await notify(ctx, {
     recipients: meeting.attendeeIds,

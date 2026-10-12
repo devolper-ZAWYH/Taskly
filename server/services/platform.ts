@@ -384,6 +384,11 @@ export async function deleteUser(ctx: Ctx, id: unknown): Promise<void> {
     ctx.db.prepare("DELETE FROM user_emails WHERE user_id = ?").bind(userId),
     ctx.db.prepare("DELETE FROM task_assignees WHERE user_id = ?").bind(userId),
     ctx.db.prepare("DELETE FROM meeting_attendees WHERE user_id = ?").bind(userId),
+    // Minutes nobody else can read go with them; shared ones stay.
+    ctx.db
+      .prepare("DELETE FROM meeting_minutes WHERE author_id = ? AND visibility = 'private'")
+      .bind(userId),
+    ctx.db.prepare("DELETE FROM meeting_minutes_shares WHERE user_id = ?").bind(userId),
     ctx.db
       .prepare(
         `UPDATE users SET name = 'Deleted user', email = 'deleted+' || id || '@deleted.invalid',

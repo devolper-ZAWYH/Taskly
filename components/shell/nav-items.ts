@@ -6,6 +6,7 @@ import {
   Building2Icon,
   CalendarDaysIcon,
   LogOutIcon,
+  NotebookPenIcon,
   RefreshCwIcon,
   SettingsIcon,
   ShieldIcon,
@@ -105,6 +106,12 @@ export function useNavGroups(): NavGroup[] {
             t("nav.calendar"),
             CalendarDaysIcon,
             workspacePath(accountId, "/calendar"),
+          ),
+          link(
+            "minutes",
+            t("nav.minutes"),
+            NotebookPenIcon,
+            workspacePath(accountId, "/minutes"),
           ),
           ...(workspace?.role === "administrator"
             ? [link("members", t("nav.members"), UsersIcon, workspacePath(accountId, "/members"))]
