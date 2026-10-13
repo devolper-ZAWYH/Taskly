@@ -2,6 +2,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import * as React from "react"
+import { ClaudeMark } from "@/components/shell/claude-mark"
 import { FormError, FormRow } from "@/components/shell/form-row"
 import { PageHeader } from "@/components/shell/page-header"
 import { PasswordInput } from "@/components/shell/password-input"
@@ -10,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
 import { toastManager } from "@/components/ui/toast"
 import { ME_KEY, useCurrentUser } from "@/features/auth/use-auth"
+import { ClaudeSetup } from "@/features/connector/claude-setup"
 import { GoogleSettings } from "@/features/google/google-settings"
 import { NotificationSettings } from "@/features/notifications/notification-settings"
 import { EmailAddresses } from "@/features/settings/email-addresses"
@@ -29,16 +31,24 @@ const LANGUAGES: { value: Locale; label: string }[] = [
 function Section({
   title,
   hint,
+  icon,
+  id,
   children,
 }: {
   title: string
   hint: string
+  icon?: React.ReactNode
+  /** Anchor, e.g. /settings#claude. */
+  id?: string
   children: React.ReactNode
 }): React.ReactElement {
   return (
-    <section className="grid gap-6 border-b py-8 md:grid-cols-[240px_1fr] md:gap-12">
+    <section id={id} className="grid scroll-mt-20 gap-6 border-b py-8 md:grid-cols-[240px_1fr] md:gap-12">
       <div>
-        <h2 className="font-display text-xl">{title}</h2>
+        <h2 className="flex items-center gap-2 font-display text-xl">
+          {icon}
+          {title}
+        </h2>
         <p className="mt-1 text-sm text-foreground-muted">{hint}</p>
       </div>
       <div className="max-w-md">{children}</div>
@@ -134,6 +144,15 @@ export default function SettingsPage() {
         <React.Suspense>
           <GoogleSettings />
         </React.Suspense>
+      </Section>
+
+      <Section
+        id="claude"
+        title={t("claude.setup.title")}
+        hint={t("claude.setup.hint")}
+        icon={<ClaudeMark className="size-6" />}
+      >
+        <ClaudeSetup />
       </Section>
 
       <Section title={t("notifications.settingsTitle")} hint={t("notifications.settingsHint")}>

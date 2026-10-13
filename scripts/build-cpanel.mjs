@@ -21,6 +21,7 @@ function run(command, args, env = {}) {
   if (result.status !== 0) process.exit(result.status ?? 1)
 }
 
+run(process.execPath, ["scripts/build-cards.mjs"])
 run("node_modules/.bin/next", ["build"], { TASKLY_RUNTIME: "node" })
 
 if (!existsSync(".next/standalone/server.js")) {

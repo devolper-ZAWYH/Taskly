@@ -21,3 +21,22 @@ export function setLastWorkspaceId(userId: string, id: string): void {
     // Storage unavailable: the picker just won't preselect.
   }
 }
+
+const CLAUDE_CARD_KEY = "tasks:claude-card-dismissed"
+
+/** The dashboard's "Use Taskly in Claude" card was dismissed on this browser. */
+export function getClaudeCardDismissed(): boolean {
+  try {
+    return localStorage.getItem(CLAUDE_CARD_KEY) === "1"
+  } catch {
+    return false
+  }
+}
+
+export function setClaudeCardDismissed(): void {
+  try {
+    localStorage.setItem(CLAUDE_CARD_KEY, "1")
+  } catch {
+    // Storage unavailable: the card comes back next visit.
+  }
+}

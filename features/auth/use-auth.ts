@@ -14,6 +14,15 @@ export function homePath(user: Pick<PublicUser, "isOperator">): string {
   return user.isOperator ? "/platform" : "/workspaces?auto=1"
 }
 
+/**
+ * A `?next=` path to return to after signing in (e.g. Claude's consent
+ * screen). Only paths on this site: never `//other.host` or a full URL.
+ */
+export function safeNext(next: string | null): string | null {
+  if (!next || !next.startsWith("/") || next.startsWith("//") || next.startsWith("/\\")) return null
+  return next
+}
+
 export function useMe() {
   return useQuery({ queryKey: ME_KEY, queryFn: getMe, staleTime: Infinity })
 }
@@ -25,7 +34,8 @@ export function useCurrentUser(): PublicUser {
   return data
 }
 
-export function useLogin() {
+/** Sign in, then go to `next` (a safe same-site path) or the usual home. */
+export function useLogin(next: string | null = null) {
   const queryClient = useQueryClient()
   const router = useRouter()
   const { setLocale } = useLocale()
@@ -36,7 +46,7 @@ export function useLogin() {
       queryClient.clear()
       queryClient.setQueryData(ME_KEY, user)
       setLocale(user.locale)
-      router.replace(homePath(user))
+      router.replace(next ?? homePath(user))
     },
   })
 }

@@ -28,6 +28,7 @@ import {
 import { emailTaken } from "@/server/emails"
 import { enqueue, queueMeetingResync } from "@/server/google/queue"
 import { looksLikeImage } from "@/server/images"
+import { revokeAllGrants } from "@/server/mcp/grants"
 import { mailConfigured } from "@/server/mail/send"
 import { membersOf } from "@/server/services/members"
 import { notify } from "@/server/services/notifications"
@@ -343,8 +344,12 @@ export async function updateUser(ctx: Ctx, id: unknown, input: unknown): Promise
     // Deactivation signs the person out everywhere.
     ...(next.active ? [] : [ctx.db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(userId)]),
   ])
-  // …and disconnects their Google account (removing the workspace copies there).
-  if (row.active === 1 && !next.active) await enqueue(ctx, [{ kind: "purge_user", userId }])
+  // …disconnects their Google account (removing the workspace copies there),
+  // and ends their Claude connections.
+  if (row.active === 1 && !next.active) {
+    await enqueue(ctx, [{ kind: "purge_user", userId }])
+    await revokeAllGrants(ctx, userId)
+  }
   return next
 }
 
@@ -398,6 +403,7 @@ export async function deleteUser(ctx: Ctx, id: unknown): Promise<void> {
       .bind(nowIso(), userId),
   ])
   await enqueue(ctx, [{ kind: "purge_user", userId }])
+  await revokeAllGrants(ctx, userId)
 }
 
 /** Attach a user to an account (workspace) with a role. */

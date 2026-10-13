@@ -520,3 +520,40 @@ export type MyEmails = {
   /** Each workspace they belong to and the address it knows them by. */
   workspaces: { accountId: string; name: string; email: string }[]
 }
+
+// ---- Claude connector ------------------------------------------------------
+
+/** An app asking for access, as the consent screen shows it, or where to send the person back to. */
+export type ConsentRequest =
+  | {
+      kind: "consent"
+      /** `name` is what the app calls itself; `host` is where it really lives. */
+      app: { name: string; host: string; local: boolean }
+      /** Where the person is sent after answering. */
+      redirectHost: string
+      scopes: string[]
+    }
+  | { kind: "redirect"; redirectUrl: string }
+
+/** One app connected to the person's Taskly account. */
+export type ClaudeConnection = {
+  id: string
+  app: string
+  host: string
+  /** Runs on their own computer (e.g. Claude Code). */
+  local: boolean
+  scopes: string[]
+  createdAt: string
+  lastUsedAt: string | null
+}
+
+/** Settings → Set up MCP. */
+export type ClaudeSetup = {
+  /** This Taskly has an App address the connector can use. */
+  available: boolean
+  /** https: the Claude apps can connect (localhost only works with Claude Code). */
+  publicUrl: boolean
+  connectorUrl: string | null
+  workspaces: { id: string; name: string; role: Role }[]
+  connections: ClaudeConnection[]
+}

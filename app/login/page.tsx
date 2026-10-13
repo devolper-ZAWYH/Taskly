@@ -1,27 +1,38 @@
 "use client"
 
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import * as React from "react"
 import { BrandMark } from "@/components/shell/brand"
 import { FormError, FormRow } from "@/components/shell/form-row"
 import { LanguageToggle } from "@/components/shell/language-toggle"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { homePath, useLogin, useMe } from "@/features/auth/use-auth"
+import { homePath, safeNext, useLogin, useMe } from "@/features/auth/use-auth"
 import { useLocale } from "@/lib/i18n/locale-provider"
 
 export default function LoginPage() {
+  // useSearchParams (for ?next=) must sit inside a Suspense boundary.
+  return (
+    <React.Suspense>
+      <LoginForm />
+    </React.Suspense>
+  )
+}
+
+function LoginForm() {
   const { t, errorMessage } = useLocale()
   const router = useRouter()
+  // Where to go afterwards, e.g. back to Claude's consent screen.
+  const next = safeNext(useSearchParams().get("next"))
   const me = useMe()
-  const loginMutation = useLogin()
+  const loginMutation = useLogin(next)
   const [email, setEmail] = React.useState("")
   const [password, setPassword] = React.useState("")
 
   React.useEffect(() => {
-    if (me.data) router.replace(homePath(me.data))
-  }, [me.data, router])
+    if (me.data) router.replace(next ?? homePath(me.data))
+  }, [me.data, next, router])
 
   function submit(event: React.FormEvent) {
     event.preventDefault()

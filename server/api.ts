@@ -5,6 +5,7 @@
 import * as auth from "@/server/services/auth"
 import * as dashboard from "@/server/services/dashboard"
 import * as emails from "@/server/services/emails"
+import * as connector from "@/server/services/connector"
 import * as google from "@/server/services/google"
 import * as meetings from "@/server/services/meetings"
 import * as minutes from "@/server/services/minutes"
@@ -103,6 +104,12 @@ export const api = {
   deletePersonalEvent: google.deletePersonalEvent,
   getGoogleSyncHealth: google.getGoogleSyncHealth,
   retryFailedGoogleJobs: google.retryFailedGoogleJobs,
+
+  describeAuthorization: connector.describeAuthorization,
+  approveAuthorization: connector.approveAuthorization,
+  denyAuthorization: connector.denyAuthorization,
+  getClaudeSetup: connector.getClaudeSetup,
+  disconnectClaude: connector.disconnectClaude,
 
   listAccounts: platform.listAccounts,
   getAccount: platform.getAccount,

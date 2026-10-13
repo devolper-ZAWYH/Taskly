@@ -16,3 +16,6 @@ next-env.d.ts
 cpanel-build/
 data/
 backups/
+
+# Claude's card page, built by scripts/build-cards.mjs
+server/mcp/cards/card-html.generated.ts

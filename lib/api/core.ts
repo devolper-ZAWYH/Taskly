@@ -51,6 +51,9 @@ export type ErrorCode =
   | "invalidUrl"
   | "mailNotConfigured"
   | "mailFailed"
+  | "connectorUnavailable"
+  | "oauthInvalidClient"
+  | "oauthInvalidRedirect"
 
 /** Error whose `code` maps to a translated message (`errors.<code>`). */
 export class AppError extends Error {

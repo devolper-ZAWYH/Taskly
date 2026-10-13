@@ -18,6 +18,8 @@ const eslintConfig = defineConfig([
     "cloudflare-env.d.ts",
     // cPanel (Node.js) build output:
     "cpanel-build/**",
+    // Claude's card page, built by scripts/build-cards.mjs:
+    "server/mcp/cards/card-html.generated.ts",
   ]),
 ]);
 

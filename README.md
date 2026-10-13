@@ -248,6 +248,75 @@ for Google (OAuth, Tasks, Calendar). Point `GOOGLE_API_ORIGIN` and
 `GOOGLE_OAUTH_ORIGIN` at it, with any client id and secret. Unit tests for the
 mapping, merge and permission rules: `yarn test`.
 
+## Claude connector (MCP)
+
+Plan: `docs/plan-claude-connector.md`. People connect Taskly to Claude (claude.ai,
+Claude Desktop, mobile and Cowork) as a custom connector. They paste
+`<App address>/mcp` into Claude, sign in to Taskly, and click Allow.
+Settings → **Set up MCP** walks them through it and lists their connections,
+each with Disconnect.
+
+- **Phase 1 (built):** read-only tools.
+  - `list_workspaces`, `list_people`, `find_tasks`, `get_task`,
+    `find_meetings`, `get_meeting` and `get_minutes`.
+  - They run as the signed-in person with the app's own permission checks.
+    Operator powers don't apply: the connector acts only where they're a member.
+  - People with several workspaces pick one per conversation; the server
+    refuses calls without one.
+- **Phase 2 (built): write actions in plain language, no commands.**
+  - `create_my_task` adds a private task for yourself.
+  - `set_task_status` completes or reopens a task.
+  - `save_minutes` saves minutes; replacing existing ones needs `replace: true`.
+  - Administrators can also give tasks to others with `review_task_delegation`
+    → `delegate_task`, and schedule meetings with `review_meeting` →
+    `create_meeting`.
+  - The create step only accepts a single-use, 15-minute draft from the review
+    (`mcp_drafts`, migration `0018`), so the person always sees the review
+    first.
+  - Names are matched forgivingly ("Umar", "عمر" → Omar) but never guessed;
+    meeting reviews flag clashes.
+  - Writing needs the `taskly.write` scope.
+  - People who are an administrator nowhere don't see the delegation and
+    meeting tools.
+- **Phase 3 (built): interactive cards in the Claude apps** (MCP Apps).
+  - `my_day` shows today's meetings and due tasks, which can be ticked done.
+  - `choose_meeting` and `choose_people` are pickers; people have photos and
+    there is a search.
+  - The two reviews show a card with Create and Discard. When a name fits
+    several people, the card asks who was meant.
+  - A choice made on a card arrives in the chat as the person's next message.
+  - Cards follow Claude's light or dark theme and the person's language
+    (Arabic right to left).
+  - Voice, Claude Code and apps without cards get the same answers in words.
+  - The card is one page built from `server/mcp/cards/view` by `yarn cards`.
+    `dev`, `build`, `build:cpanel` and `typecheck` run it first; the output,
+    `card-html.generated.ts`, isn't committed.
+  - Photos use hour-long photo links (`mcp_photo_links`, migration `0019`)
+    that end when Claude is disconnected.
+- **Endpoint:** `/mcp` is a stateless Streamable HTTP endpoint (MCP TypeScript
+  SDK v2, JSON responses only). It serves both the 2026-07-28 and 2025-era
+  protocols, on Cloudflare and on Node.
+- **Sign-in:** Taskly is its own OAuth 2.1 server.
+  - Endpoints: `/oauth/authorize` (the consent page), `/oauth/token`,
+    `/oauth/register` (DCR) and `/oauth/revoke`, plus the discovery documents
+    under `/.well-known/`.
+  - Claude identifies itself with a Client ID Metadata Document, which Taskly
+    fetches.
+  - Redirects are limited to `https://claude.ai/api/mcp/auth_callback` and
+    loopback addresses (Claude Code).
+  - Tokens are stored hashed. Access tokens last an hour. Refresh tokens last
+    60 days and rotate; reusing one ends the connection. Deactivating or
+    deleting a user ends their connections.
+- **Setup:** set the App address (Platform → Settings) to the public https
+  URL and run migrations `0017`, `0018` and `0019`. Nothing else is needed: no keys, no Anthropic
+  account. A localhost App address works with Claude Code only.
+- **Claude logo:** save Anthropic's official Claude logo as
+  `public/brand/claude.svg`, following their brand guidelines. Until then a
+  neutral mark is shown.
+- **Try it locally with Claude Code:** run
+  `claude mcp add --transport http taskly http://localhost:3100/mcp`, then
+  `/mcp` → Authenticate.
+
 ## Structure
 
 - `server/`: the backend.
@@ -264,6 +333,24 @@ mapping, merge and permission rules: `yarn test`.
     - `sync-tasks.ts`, `sync-meetings.ts` and `pull.ts`: the two directions.
     - `personal.ts`: the person's own Google items.
     - Route handlers live in `app/api/google/*`.
+  - `mcp/*`: the Claude connector.
+    - `oauth-rules.ts`: pure rules, with unit tests.
+    - `clients.ts`: CIMD and DCR clients.
+    - `grants.ts`: codes, connections and tokens.
+    - `authorize.ts`: checks authorization requests.
+    - `endpoints.ts`: the HTTP endpoints.
+    - `server.ts`: the MCP server.
+    - `tools.ts` (read) and `actions.ts` (write): the tools.
+    - `match.ts`: name matching, with tests.
+    - `drafts.ts`: review drafts.
+    - `photos.ts`: photo links for cards.
+    - `cards/`: the interactive card.
+      - `resource.ts`: the card page.
+      - `tools.ts`: `my_day` and the pickers.
+      - `types.ts`: what cards read.
+      - `view/`: the card itself, built by `scripts/build-cards.mjs`.
+    - `workspaces.ts`: choosing a workspace.
+    - Routes live in `app/mcp`, `app/oauth/*` and `app/.well-known/*`.
 - `app/api/rpc/[method]/route.ts`: the HTTP endpoint.
 - `lib/api/*`: the browser side, with typed functions that call the server.
 - `lib/permissions.ts`: who may see or change what, shared by server and UI.

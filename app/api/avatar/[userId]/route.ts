@@ -1,15 +1,23 @@
 import { currentUser } from "@/server/context"
 import { first } from "@/server/db"
+import { photoLinkViewer } from "@/server/mcp/photos"
 import { requestContext } from "@/server/request"
 
 /**
  * GET /api/avatar/<userId>?v=<version> — a profile picture, for the person
  * themselves, platform operators, and anyone sharing a workspace with them.
+ * Claude's cards, which have no session, pass a photo link token (`pt`)
+ * instead and see what its owner would see (server/mcp/photos.ts).
  */
 export async function GET(request: Request, { params }: { params: Promise<{ userId: string }> }) {
   const { userId } = await params
   const ctx = await requestContext(request)
-  const viewer = await currentUser(ctx)
+  const user = await currentUser(ctx)
+  const viewer = user
+    ? { id: user.id, isOperator: user.isOperator }
+    : await photoLinkViewer(ctx, new URL(request.url).searchParams.get("pt")).then((id) =>
+        id ? { id, isOperator: false } : null,
+      )
   if (!viewer) return new Response(null, { status: 401 })
 
   const avatar = await first<{ content_type: string; data: string }>(
