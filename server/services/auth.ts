@@ -48,7 +48,8 @@ const FAILURES_PER_IP = 30
 
 export async function login(ctx: Ctx, email: unknown, pass: unknown): Promise<PublicUser> {
   const normalized = normalizeEmail(str(email, 254))
-  const keys = { email: `email:${normalized}`, ip: `ip:${ctx.ip ?? "unknown"}` }
+  // An unknown address only gets the per-email limit, rather than one limit shared by everyone.
+  const keys = { email: `email:${normalized}`, ip: ctx.ip ? `ip:${ctx.ip}` : null }
   const since = new Date(Date.now() - FAILURE_WINDOW_MS).toISOString()
   // Checked before the password, and the same whether or not the account exists.
   const recent = await first<{ by_email: number; by_ip: number }>(
@@ -72,8 +73,8 @@ export async function login(ctx: Ctx, email: unknown, pass: unknown): Promise<Pu
     await ctx.db.batch([
       ctx.db.prepare("DELETE FROM login_failures WHERE failed_at <= ?").bind(since),
       ctx.db
-        .prepare("INSERT INTO login_failures (key, failed_at) VALUES (?, ?), (?, ?)")
-        .bind(keys.email, now, keys.ip, now),
+        .prepare("INSERT INTO login_failures (key, failed_at) SELECT value, ? FROM json_each(?)")
+        .bind(now, JSON.stringify(keys.ip ? [keys.email, keys.ip] : [keys.email])),
     ])
     throw new AppError("invalidCredentials")
   }

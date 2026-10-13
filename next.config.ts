@@ -17,7 +17,12 @@ const SECURITY_HEADERS = [
   { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
 ]
 
+/** `yarn build:cpanel` builds for a plain Node.js server instead of Cloudflare. */
+const forNode = process.env.TASKLY_RUNTIME === "node"
+
 const nextConfig: NextConfig = {
+  // A self-contained server (server.js + only the files it needs), for cPanel.
+  ...(forNode ? { output: "standalone" as const } : {}),
   async headers() {
     return [{ source: "/(.*)", headers: SECURITY_HEADERS }]
   },
@@ -26,4 +31,4 @@ const nextConfig: NextConfig = {
 export default nextConfig
 
 // Lets `next dev` emulate Cloudflare bindings (same setup as the portfolio).
-import("@opennextjs/cloudflare").then((m) => m.initOpenNextCloudflareForDev())
+if (!forNode) import("@opennextjs/cloudflare").then((m) => m.initOpenNextCloudflareForDev())

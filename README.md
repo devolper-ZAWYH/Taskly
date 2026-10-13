@@ -38,6 +38,9 @@ yarn db:migrate:remote  # apply new files in migrations/ to the live database
 yarn deploy             # build and upload the Worker
 ```
 
+On cPanel hosting (a Node.js app with a SQLite database) instead:
+`yarn build:cpanel`, then follow [docs/cpanel.md](docs/cpanel.md).
+
 Schema changes go in a new numbered file in `migrations/`; never edit one
 that has already been applied. Run `yarn cf-typegen` after changing
 `wrangler.jsonc`.

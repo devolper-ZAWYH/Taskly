@@ -16,6 +16,8 @@ const eslintConfig = defineConfig([
     ".open-next/**",
     ".wrangler/**",
     "cloudflare-env.d.ts",
+    // cPanel (Node.js) build output:
+    "cpanel-build/**",
   ]),
 ]);
 

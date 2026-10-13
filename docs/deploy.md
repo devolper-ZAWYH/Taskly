@@ -114,6 +114,11 @@ Sign in as the operator and open **Platform → Settings**:
 
 Then create workspaces (Platform → Accounts) and invite people.
 
+## Hosting on cPanel instead
+
+Taskly can also run as a Node.js app on cPanel hosting, with a SQLite database
+on that server: see [cpanel.md](cpanel.md).
+
 ## Custom domain (optional)
 
 To serve Taskly at, say, `tasks.zawyh.com`, the domain's DNS must be on

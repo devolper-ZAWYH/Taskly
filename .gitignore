@@ -11,3 +11,8 @@ next-env.d.ts
 .open-next/
 .wrangler/
 .dev.vars
+
+# cPanel (Node.js) build and its local database
+cpanel-build/
+data/
+backups/
