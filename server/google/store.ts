@@ -37,6 +37,8 @@ export type ContainerRow = {
   channel_token: string | null
   channel_resource_id: string | null
   channel_expires_at: string | null
+  /** Personal calendars: the workspace its work meetings are added to automatically. */
+  auto_account_id: string | null
 }
 
 export type LinkKind = "task" | "meeting"
@@ -112,6 +114,7 @@ export function toContainer(row: ContainerRow): GoogleContainer {
     selected: row.account_id !== null || row.selected === 1,
     color: row.color,
     primary: row.is_primary === 1,
+    autoAccountId: row.auto_account_id ?? null,
   }
 }
 

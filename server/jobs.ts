@@ -5,6 +5,7 @@
  */
 import type { Ctx } from "@/server/context"
 import { runGoogleSync } from "@/server/google/cron"
+import { runGoogleAutoAdd } from "@/server/google/imports"
 import { runDueReminders } from "@/server/services/reminders"
 import { drainTranslations } from "@/server/translate/service"
 
@@ -34,5 +35,7 @@ export async function runJobs(ctx: Ctx, kind: JobKind, at: Date): Promise<string
     return `google sync: ${synced} jobs; translations: ${translated} ran`
   }
   const sent = await runDueReminders(ctx, at)
-  return `due date reminders: ${sent} sent`
+  // Calendars someone marked to add their work meetings to a workspace.
+  const added = await runGoogleAutoAdd(ctx, at)
+  return `due date reminders: ${sent} sent; google events added: ${added}`
 }

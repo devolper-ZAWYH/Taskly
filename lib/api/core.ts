@@ -37,6 +37,7 @@ export type ErrorCode =
   | "googleNotConnected"
   | "googleTasksOff"
   | "googleEventNotImportable"
+  | "googleEventAlreadyAdded"
   | "googleReconnect"
   | "googleUnavailable"
   | "inviteInvalid"

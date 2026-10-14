@@ -823,6 +823,19 @@ const ar: Messages = {
       addTask: "أضف مهمة: {url}",
     },
     mark: "Google",
+    suggestions: {
+      banner: "اجتماعات Google مع أشخاص من {workspace}: {count}. أضفها للحصول على المحاضر وبنود العمل.",
+      review: "مراجعة",
+      title: "إضافة اجتماعات Google إلى مساحة العمل",
+      description:
+        "تضم هذه الأحداث أشخاصًا من {workspace}. يصبح كل منها اجتماعًا في مساحة العمل مع محضر وبنود عمل، وتبقى الأحداث الأصلية في تقويم Google.",
+      outsiders: "+{count} من خارج مساحة العمل",
+      notWork: "ليس اجتماع عمل",
+      addAll: "إضافة الكل ({count})",
+      addSelected: "إضافة المحدد ({count})",
+      added: "تمت إضافة {count} إلى مساحة العمل",
+      skipped: "تم تخطي {count}: أُضيفت سابقًا أو لم تعد اجتماعًا محدد الوقت.",
+    },
     noTitle: "(بلا عنوان)",
     synced: "متزامن مع Google",
     settings: {
@@ -854,6 +867,10 @@ const ar: Messages = {
       tasksReconnect: "أصبح بإمكان Taskly مزامنة مهامك مع مهام Google أيضًا. أعد ربط Google واسمح بالوصول إلى مهام Google للبدء.",
       calendars: "التقويمات",
       taskLists: "قوائم المهام",
+      autoAdd: "إضافة اجتماعات العمل تلقائيًا إلى",
+      autoAddOff: "بدون إضافة تلقائية",
+      autoAddHint:
+        "كل ساعة، تتحول أحداث هذا التقويم التي تضم أحدًا من مساحة العمل إلى اجتماعات في مساحة العمل. وتبقى الأحداث الأصلية في Google.",
       primaryCalendar: "التقويم الرئيسي",
       defaultList: "القائمة الافتراضية",
       automatic: "تُزامَن تلقائيًا",
@@ -1155,6 +1172,7 @@ const ar: Messages = {
     googleNotConfigured: "لم يتم إعداد مزامنة Google على الخادم بعد.",
     googleNotConnected: "اربط حسابك في Google من الإعدادات أولًا.",
     googleTasksOff: "مهام Google غير متزامنة مع Taskly. تبقى مهامك في Taskly.",
+    googleEventAlreadyAdded: "هذا الحدث اجتماع بالفعل في مساحة العمل هذه.",
     googleEventNotImportable: "يمكن تحويل الأحداث التي تبدأ وتنتهي في اليوم نفسه فقط إلى اجتماعات في مساحة العمل.",
     googleReconnect: "فقد Taskly الوصول إلى حسابك في Google. أعد ربطه من الإعدادات.",
     googleUnavailable: "لم يستجب Google. حاول مرة أخرى بعد قليل.",

@@ -396,6 +396,8 @@ export type GoogleContainer = {
   color: string | null
   /** The person's default task list / primary calendar. */
   primary: boolean
+  /** Personal calendars: work meetings in it are added to this workspace automatically. */
+  autoAccountId: string | null
 }
 
 /** One of the person's own Google Tasks. Only they see it in Taskly. */
@@ -446,6 +448,20 @@ export type GoogleEventImport = {
   meeting: MeetingInput
   /** Guests who aren't in the workspace: not invited. */
   unmatched: string[]
+}
+
+/** A Google event with other people from the workspace, not added yet (Calendar page). */
+export type GoogleEventSuggestion = {
+  calendarId: string
+  eventId: string
+  title: string
+  date: string
+  startTime: string
+  endTime: string
+  /** Workspace people on it (they'd be invited). */
+  people: string[]
+  /** Guests who aren't in the workspace. */
+  outsiders: number
 }
 
 /** Times are wall-clock in `timeZone` (the browser's zone). */

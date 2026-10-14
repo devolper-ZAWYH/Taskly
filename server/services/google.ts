@@ -8,6 +8,7 @@ import type {
   GoogleContainer,
   GoogleContainerKind,
   GoogleEventImport,
+  GoogleEventSuggestion,
   GoogleStatus,
   GoogleSyncHealth,
   Meeting,
@@ -23,13 +24,18 @@ import { googleFor } from "@/server/google/client"
 import { googleConfigured, googleTasksEnabled, tasksSyncFor } from "@/server/google/config"
 import { purgeUser, refreshPersonalContainers } from "@/server/google/containers"
 import { failedJobCount, retryFailedJobs, syncHealth } from "@/server/google/health"
-import { eventGuestEmails, eventSourceKey, importableFields } from "@/server/google/mapping"
-import { workspaceZone } from "@/server/google/people"
+import {
+  addEventAsMeeting,
+  dismissEvent,
+  ownCalendar,
+  planImport,
+  runGoogleAutoAdd,
+  suggestionsFor,
+} from "@/server/google/imports"
 import * as personal from "@/server/google/personal"
 import { viaGoogle } from "@/server/google/personal"
-import { drainJobs, enqueue, queueGoogleSync } from "@/server/google/queue"
+import { drainJobs, enqueue } from "@/server/google/queue"
 import { containersOf, getConnection, toContainer, type ContainerRow } from "@/server/google/store"
-import { createMeetingAs } from "@/server/services/meetings"
 import { bool, date, isObject, oneOf, str, time, timeZone } from "@/server/validate"
 
 const KINDS = ["tasklist", "calendar"] as const satisfies readonly GoogleContainerKind[]
@@ -266,23 +272,17 @@ export async function retryFailedGoogleJobs(ctx: Ctx): Promise<GoogleSyncHealth>
   return getGoogleSyncHealth(ctx)
 }
 
-// ---- Adding a Google event to a workspace -------------------------------------------
+// ---- Adding Google events to a workspace (server/google/imports.ts) --------------
 
-/** One of the person's own Google events, read fresh from one of their own calendars. */
 async function ownEvent(ctx: Ctx, userId: string, calendarId: unknown, eventId: unknown) {
-  const calendar = (await containersOf(ctx.db, userId)).find(
-    (c) => c.kind === "calendar" && c.account_id === null && c.google_id === str(calendarId, 1024),
-  )
-  if (!calendar) throw new AppError("notFound")
+  const calendar = await ownCalendar(ctx, userId, str(calendarId, 1024))
   const g = await googleFor(ctx, userId)
   return viaGoogle(() => calendarApi.get(g, calendar.google_id, str(eventId, 1024)))
 }
 
 /**
- * The meeting an administrator would get from one of their Google events: its
- * details as wall-clock times in the workspace's zone, and its guests matched
- * to workspace people by any of their confirmed addresses. `unmatched`: guests
- * who aren't in the workspace (the form says so; they aren't invited).
+ * The meeting an administrator would get from one of their Google events (fills
+ * the form). `unmatched`: guests who aren't in the workspace, so not invited.
  */
 export async function previewGoogleEventImport(
   ctx: Ctx,
@@ -292,46 +292,12 @@ export async function previewGoogleEventImport(
 ): Promise<GoogleEventImport> {
   const userId = await requireConnected(ctx)
   await requireWorkspaceAdmin(ctx, accountId)
-  const event = await ownEvent(ctx, userId, calendarId, eventId)
-  const fields = importableFields(event, await workspaceZone(ctx, accountId, userId))
-  if (!fields) throw new AppError("googleEventNotImportable")
-
-  const people = await all<{ id: string; email: string }>(
-    ctx.db,
-    `SELECT u.id, lower(u.email) AS email FROM memberships ms
-       JOIN users u ON u.id = ms.user_id AND u.active = 1 AND u.deleted_at IS NULL
-     WHERE ms.account_id = ?
-     UNION
-     SELECT ue.user_id AS id, lower(ue.email) AS email FROM user_emails ue
-       JOIN memberships ms ON ms.user_id = ue.user_id AND ms.account_id = ?
-       JOIN users u ON u.id = ue.user_id AND u.active = 1 AND u.deleted_at IS NULL
-     WHERE ue.verified_at IS NOT NULL`,
-    accountId,
-    accountId,
-  )
-  const byEmail = new Map(people.map((p) => [p.email, p.id]))
-  // Their own addresses: in Taskly, and the Google account they connected.
-  const connection = await getConnection(ctx.db, userId)
-  const mine = new Set([
-    ...people.filter((p) => p.id === userId).map((p) => p.email),
-    ...(connection ? [connection.google_email.toLowerCase()] : []),
-  ])
-  const attendeeIds = new Set<string>()
-  const unmatched: string[] = []
-  for (const email of eventGuestEmails(event)) {
-    const id = byEmail.get(email)
-    if (id === userId || mine.has(email)) continue
-    if (id) attendeeIds.add(id)
-    else unmatched.push(email)
-  }
-  return { meeting: { ...fields, attendeeIds: [...attendeeIds] }, unmatched }
+  const plan = await planImport(ctx, accountId, userId, await ownEvent(ctx, userId, calendarId, eventId))
+  if (!plan) throw new AppError("googleEventNotImportable")
+  return { meeting: plan.meeting, unmatched: plan.unmatched }
 }
 
-/**
- * Add one of the person's Google events to a workspace as a meeting, with the
- * details they confirmed in the form. The original stays in Google; Taskly
- * shows the meeting in its place to everyone who can see it.
- */
+/** Add one Google event as a meeting, with the details confirmed in the form. */
 export async function addGoogleEventToWorkspace(
   ctx: Ctx,
   accountId: string,
@@ -341,9 +307,82 @@ export async function addGoogleEventToWorkspace(
 ): Promise<Meeting> {
   const userId = await requireConnected(ctx)
   const actor = await requireWorkspaceAdmin(ctx, accountId)
-  const event = await ownEvent(ctx, userId, calendarId, eventId)
-  const meeting = await createMeetingAs(ctx, actor, input)
-  await run(ctx.db, "UPDATE meetings SET google_source = ? WHERE id = ?", eventSourceKey(event), meeting.id)
-  await queueGoogleSync(ctx, "meeting", accountId, meeting.id)
-  return meeting
+  return addEventAsMeeting(ctx, actor, await ownEvent(ctx, userId, calendarId, eventId), input)
+}
+
+/** Their Google events with other people from this workspace, not added yet (Calendar page). */
+export async function listGoogleEventSuggestions(ctx: Ctx, accountId: string): Promise<GoogleEventSuggestion[]> {
+  const userId = await requireConnected(ctx)
+  await requireWorkspaceAdmin(ctx, accountId)
+  return viaGoogle(() => suggestionsFor(ctx, accountId, userId))
+}
+
+/** "Add" / "Add all" on suggestions: each as planned, without the form. */
+export async function addSuggestedGoogleEvents(
+  ctx: Ctx,
+  accountId: string,
+  items: unknown,
+): Promise<{ added: number; skipped: number }> {
+  const userId = await requireConnected(ctx)
+  const actor = await requireWorkspaceAdmin(ctx, accountId)
+  if (!Array.isArray(items) || items.length === 0 || items.length > 50) throw new AppError("badRequest")
+  let added = 0
+  let skipped = 0
+  for (const item of items) {
+    if (!isObject(item)) throw new AppError("badRequest")
+    const event = await ownEvent(ctx, userId, item.calendarId, item.eventId)
+    const plan = await planImport(ctx, accountId, userId, event)
+    try {
+      if (!plan) throw new AppError("googleEventNotImportable")
+      await addEventAsMeeting(ctx, actor, event, plan.meeting)
+      added++
+    } catch (error) {
+      if (!(error instanceof AppError)) throw error
+      skipped++
+    }
+  }
+  return { added, skipped }
+}
+
+/** "Not a work meeting": stop suggesting (and auto-adding) it in this workspace. */
+export async function dismissGoogleEventSuggestion(
+  ctx: Ctx,
+  accountId: string,
+  calendarId: unknown,
+  eventId: unknown,
+): Promise<void> {
+  const userId = await requireConnected(ctx)
+  await requireWorkspaceAdmin(ctx, accountId)
+  await dismissEvent(ctx, userId, accountId, await ownEvent(ctx, userId, calendarId, eventId))
+}
+
+/**
+ * Settings → Google: add this calendar's work meetings to a workspace
+ * automatically (one where they're an administrator), or stop (null).
+ * Runs once straight away, then hourly.
+ */
+export async function setGoogleCalendarAutoAdd(
+  ctx: Ctx,
+  calendarId: unknown,
+  accountId: unknown,
+): Promise<GoogleContainer[]> {
+  const userId = await requireConnected(ctx)
+  const calendar = await ownCalendar(ctx, userId, str(calendarId, 1024))
+  const target = accountId === null ? null : str(accountId, 100)
+  if (target) await requireWorkspaceAdmin(ctx, target)
+  await run(
+    ctx.db,
+    "UPDATE google_containers SET auto_account_id = ? WHERE user_id = ? AND kind = 'calendar' AND google_id = ?",
+    target,
+    userId,
+    calendar.google_id,
+  )
+  if (target) {
+    ctx.waitUntil(
+      runGoogleAutoAdd(ctx, new Date(), { userId, calendarId: calendar.google_id }).catch((error) =>
+        console.error("google auto-add failed", error),
+      ),
+    )
+  }
+  return (await containersOf(ctx.db, userId)).map(toContainer)
 }

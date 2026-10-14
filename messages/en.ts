@@ -832,6 +832,19 @@ const en = {
     },
     /** Google sync screens: Settings, calendar, Personal tasks, dashboard. */
     mark: "Google",
+    suggestions: {
+      banner: "Google meetings with people from {workspace}: {count}. Add them to get minutes and action items.",
+      review: "Review",
+      title: "Add Google meetings to the workspace",
+      description:
+        "These events include people from {workspace}. Each becomes a workspace meeting with minutes and action items; the originals stay in Google Calendar.",
+      outsiders: "+{count} outside the workspace",
+      notWork: "Not a work meeting",
+      addAll: "Add all ({count})",
+      addSelected: "Add {count} selected",
+      added: "Added {count} to the workspace",
+      skipped: "{count} skipped: already added, or no longer a timed meeting.",
+    },
     noTitle: "(No title)",
     synced: "Synced to Google",
     settings: {
@@ -863,6 +876,10 @@ const en = {
       tasksReconnect: "Taskly can now sync your tasks with Google Tasks too. Reconnect Google and allow Google Tasks to start.",
       calendars: "Calendars",
       taskLists: "Task lists",
+      autoAdd: "Add work meetings automatically to",
+      autoAddOff: "Don't add automatically",
+      autoAddHint:
+        "Every hour, events in this calendar that include someone from the workspace become workspace meetings. The originals stay in Google.",
       primaryCalendar: "Main calendar",
       defaultList: "Default list",
       automatic: "Synced automatically",
@@ -1169,6 +1186,7 @@ const en = {
     googleNotConfigured: "Google sync isn't set up on the server yet.",
     googleNotConnected: "Connect your Google account in Settings first.",
     googleTasksOff: "Google Tasks isn't synced with Taskly. Your tasks stay in Taskly.",
+    googleEventAlreadyAdded: "This event is already a meeting in this workspace.",
     googleEventNotImportable:
       "Only events with a start and end time on the same day can become workspace meetings.",
     googleReconnect: "Taskly lost access to your Google account. Reconnect it in Settings.",

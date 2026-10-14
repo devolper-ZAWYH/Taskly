@@ -12,6 +12,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import * as React from "react"
 import { ConfirmDialog } from "@/components/shell/confirm-dialog"
 import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { toastManager } from "@/components/ui/toast"
@@ -20,9 +21,11 @@ import {
   useDisconnectGoogle,
   useGoogleContainers,
   useGoogleStatus,
+  useSetGoogleCalendarAutoAdd,
   useSetGoogleContainerSelected,
   useSyncGoogleNow,
 } from "@/features/google/hooks"
+import { useMyWorkspaces } from "@/features/workspace/workspace-context"
 import { GOOGLE_CONNECT_URL } from "@/lib/api/google"
 import { useLocale, type MessageKey } from "@/lib/i18n/locale-provider"
 import type { GoogleContainer, GoogleContainerKind, GoogleStatus } from "@/lib/types"
@@ -321,46 +324,99 @@ function ContainerRow({ container }: { container: GoogleContainer }): React.Reac
   const checked = setSelected.isPending ? setSelected.variables.selected : container.selected
 
   return (
-    <div className="flex items-center gap-3 border-b px-4 py-3 last:border-b-0">
-      {container.kind === "calendar" ? (
-        <span
-          aria-hidden="true"
-          className="size-3 shrink-0 rounded-full border border-foreground/10"
-          style={{ background: container.color ?? "var(--foreground-muted)" }}
-        />
-      ) : (
-        <ListChecksIcon className="size-4 shrink-0 text-foreground-muted" aria-hidden="true" />
-      )}
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span dir="auto" className="truncate text-sm">
-          {container.title}
-        </span>
-        {container.primary ? (
-          <span className="text-xs text-foreground-muted">
-            {container.kind === "calendar"
-              ? t("google.settings.primaryCalendar")
-              : t("google.settings.defaultList")}
+    <div className="flex flex-col gap-2 border-b px-4 py-3 last:border-b-0">
+      <div className="flex items-center gap-3">
+        {container.kind === "calendar" ? (
+          <span
+            aria-hidden="true"
+            className="size-3 shrink-0 rounded-full border border-foreground/10"
+            style={{ background: container.color ?? "var(--foreground-muted)" }}
+          />
+        ) : (
+          <ListChecksIcon className="size-4 shrink-0 text-foreground-muted" aria-hidden="true" />
+        )}
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span dir="auto" className="truncate text-sm">
+            {container.title}
           </span>
-        ) : null}
-      </span>
-      {workspace ? (
-        <span className="shrink-0 text-xs text-foreground-muted">
-          {t("google.settings.automatic")}
+          {container.primary ? (
+            <span className="text-xs text-foreground-muted">
+              {container.kind === "calendar"
+                ? t("google.settings.primaryCalendar")
+                : t("google.settings.defaultList")}
+            </span>
+          ) : null}
         </span>
-      ) : (
-        <Switch
-          aria-label={container.title}
-          checked={checked}
-          onCheckedChange={(selected) =>
-            setSelected.mutate(
-              { kind: container.kind, id: container.id, selected },
-              {
-                onError: (error) => toastManager.add({ type: "error", title: errorMessage(error) }),
-              },
+        {workspace ? (
+          <span className="shrink-0 text-xs text-foreground-muted">
+            {t("google.settings.automatic")}
+          </span>
+        ) : (
+          <Switch
+            aria-label={container.title}
+            checked={checked}
+            onCheckedChange={(selected) =>
+              setSelected.mutate(
+                { kind: container.kind, id: container.id, selected },
+                {
+                  onError: (error) => toastManager.add({ type: "error", title: errorMessage(error) }),
+                },
+              )
+            }
+          />
+        )}
+      </div>
+      {container.kind === "calendar" && !workspace ? <AutoAdd container={container} /> : null}
+    </div>
+  )
+}
+
+const AUTO_OFF = "off"
+
+/**
+ * Under each of their own calendars, for administrators: add the work meetings
+ * in it (events with someone from that workspace) to a workspace every hour.
+ */
+function AutoAdd({ container }: { container: GoogleContainer }): React.ReactElement | null {
+  const { t, errorMessage } = useLocale()
+  const workspaces = useMyWorkspaces()
+  const setAuto = useSetGoogleCalendarAutoAdd()
+  const admin = (workspaces.data ?? []).filter((w) => w.role === "administrator" && !w.viaOperator)
+  if (admin.length === 0) return null
+  const value = setAuto.isPending ? (setAuto.variables.accountId ?? AUTO_OFF) : (container.autoAccountId ?? AUTO_OFF)
+  const label = (id: string) =>
+    id === AUTO_OFF ? t("google.settings.autoAddOff") : (admin.find((w) => w.account.id === id)?.account.name ?? "")
+
+  return (
+    <div className="flex flex-col gap-1 ps-6">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-foreground-muted">{t("google.settings.autoAdd")}</span>
+        <Select
+          value={value}
+          onValueChange={(next) =>
+            next &&
+            setAuto.mutate(
+              { calendarId: container.id, accountId: next === AUTO_OFF ? null : (next as string) },
+              { onError: (error) => toastManager.add({ type: "error", title: errorMessage(error) }) },
             )
           }
-        />
-      )}
+        >
+          <SelectTrigger size="sm" className="w-auto min-w-40" aria-label={t("google.settings.autoAdd")}>
+            <span>{label(value)}</span>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={AUTO_OFF}>{t("google.settings.autoAddOff")}</SelectItem>
+            {admin.map((w) => (
+              <SelectItem key={w.account.id} value={w.account.id}>
+                {w.account.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      {container.autoAccountId ? (
+        <p className="text-xs text-foreground-muted">{t("google.settings.autoAddHint")}</p>
+      ) : null}
     </div>
   )
 }

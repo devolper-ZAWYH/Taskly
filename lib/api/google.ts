@@ -3,6 +3,7 @@ import type {
   GoogleContainer,
   GoogleContainerKind,
   GoogleEventImport,
+  GoogleEventSuggestion,
   GoogleStatus,
   GoogleSyncHealth,
   Meeting,
@@ -101,3 +102,22 @@ export const getGoogleSyncHealth = (): Promise<GoogleSyncHealth> => rpc("getGoog
 
 /** Operators: put every failed sync job back in the queue. */
 export const retryFailedGoogleJobs = (): Promise<GoogleSyncHealth> => rpc("retryFailedGoogleJobs")
+
+export const listGoogleEventSuggestions = (accountId: string): Promise<GoogleEventSuggestion[]> =>
+  rpc("listGoogleEventSuggestions", accountId)
+
+export const addSuggestedGoogleEvents = (
+  accountId: string,
+  items: { calendarId: string; eventId: string }[],
+): Promise<{ added: number; skipped: number }> => rpc("addSuggestedGoogleEvents", accountId, items)
+
+export const dismissGoogleEventSuggestion = (
+  accountId: string,
+  calendarId: string,
+  eventId: string,
+): Promise<void> => rpc("dismissGoogleEventSuggestion", accountId, calendarId, eventId)
+
+export const setGoogleCalendarAutoAdd = (
+  calendarId: string,
+  accountId: string | null,
+): Promise<GoogleContainer[]> => rpc("setGoogleCalendarAutoAdd", calendarId, accountId)

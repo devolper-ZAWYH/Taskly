@@ -104,6 +104,10 @@ export const api = {
   deletePersonalEvent: google.deletePersonalEvent,
   previewGoogleEventImport: google.previewGoogleEventImport,
   addGoogleEventToWorkspace: google.addGoogleEventToWorkspace,
+  listGoogleEventSuggestions: google.listGoogleEventSuggestions,
+  addSuggestedGoogleEvents: google.addSuggestedGoogleEvents,
+  dismissGoogleEventSuggestion: google.dismissGoogleEventSuggestion,
+  setGoogleCalendarAutoAdd: google.setGoogleCalendarAutoAdd,
   getGoogleSyncHealth: google.getGoogleSyncHealth,
   retryFailedGoogleJobs: google.retryFailedGoogleJobs,
 

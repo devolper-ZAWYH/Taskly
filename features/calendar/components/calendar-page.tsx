@@ -38,6 +38,7 @@ import {
   PersonalEventFormDialog,
   type PersonalEventFormState,
 } from "@/features/google/personal-event-form"
+import { GoogleEventSuggestions } from "@/features/google/event-suggestions"
 import { PersonalEventPanel } from "@/features/google/personal-event-panel"
 import { toEventSpan, toEventSpans, type EventSpan } from "@/features/google/personal-events"
 import { useWorkspace, useWorkspacePath } from "@/features/workspace/workspace-context"
@@ -225,6 +226,9 @@ export function CalendarPage(): React.ReactElement {
           ) : null
         }
       />
+
+      {/* Their Google meetings with people from this workspace, ready to add. */}
+      <GoogleEventSuggestions enabled={isAdmin && !viaOperator && googleConnected} />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">

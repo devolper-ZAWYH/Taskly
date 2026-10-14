@@ -18,8 +18,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { TimePicker } from "@/components/ui/time-picker"
 import { toastManager } from "@/components/ui/toast"
 import { useCreateMeeting, useUpdateMeeting } from "@/features/calendar/hooks/use-meetings"
-import { useAddGoogleEventToWorkspace } from "@/features/google/hooks"
-import { useGoogleConnected } from "@/features/google/hooks"
+import { useAddGoogleEventToWorkspace, useGoogleConnected } from "@/features/google/hooks"
 import {
   PersonalEventForm,
   type PersonalEventDraft,
