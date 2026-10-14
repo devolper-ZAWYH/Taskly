@@ -9,7 +9,7 @@ import type { Ctx } from "@/server/context"
 import { newId } from "@/server/crypto"
 import { all, first, nowIso, run } from "@/server/db"
 import { GoogleError } from "@/server/google/client"
-import { googleConfigured } from "@/server/google/config"
+import { googleConfigured, googleTasksEnabled } from "@/server/google/config"
 
 export type JobKind =
   | "sync_task"
@@ -89,13 +89,15 @@ export async function enqueue(
 }
 
 /** After a task or meeting changes in Taskly: bring every person's Google copy in line. */
-export function queueGoogleSync(
+export async function queueGoogleSync(
   ctx: Ctx,
   kind: "task" | "meeting",
   accountId: string,
   entityId: string,
   options?: { drain?: boolean },
 ): Promise<void> {
+  // Tasks only go to Google while tasks sync is switched on.
+  if (kind === "task" && !(await googleTasksEnabled(ctx))) return
   return enqueue(
     ctx,
     [{ kind: kind === "task" ? "sync_task" : "sync_meeting", accountId, entityId }],

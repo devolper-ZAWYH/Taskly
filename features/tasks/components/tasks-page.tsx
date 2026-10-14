@@ -12,7 +12,7 @@ import { Tabs, TabsList, TabsTab } from "@/components/ui/tabs"
 import { useWorkspace } from "@/features/workspace/workspace-context"
 import { toDateKey } from "@/features/calendar/lib/calendar-utils"
 import { GoogleMark } from "@/features/google/google-mark"
-import { useGoogleConnected } from "@/features/google/hooks"
+import { useGoogleTasks } from "@/features/google/hooks"
 import {
   PersonalTaskDialog,
   PersonalTaskList,
@@ -44,7 +44,7 @@ export function TasksPage(): React.ReactElement {
   const debouncedSearch = useDebouncedValue(search)
 
   // Mine also lists the viewer's own Google Tasks, under their private tasks.
-  const googleConnected = useGoogleConnected()
+  const googleTasks = useGoogleTasks()
   const [showCompleted, setShowCompleted] = React.useState(false)
   const [personalDialog, setPersonalDialog] = React.useState<PersonalTaskDialogState | null>(null)
 
@@ -142,7 +142,7 @@ export function TasksPage(): React.ReactElement {
         />
       </div>
 
-      {mine && googleConnected ? (
+      {mine && googleTasks ? (
         <section className="flex flex-col gap-3" data-testid="mine-google">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>

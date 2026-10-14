@@ -3,6 +3,8 @@
 import { TriangleAlertIcon, XIcon } from "lucide-react"
 import Link from "next/link"
 import * as React from "react"
+import { ClaudeMark } from "@/components/shell/claude-mark"
+import { GoogleLogo } from "@/components/shell/google-logo"
 import { Button } from "@/components/ui/button"
 import { useCurrentUser } from "@/features/auth/use-auth"
 import { useClaudeSetup } from "@/features/connector/hooks"
@@ -48,7 +50,9 @@ export function SetupBar(): React.ReactElement | null {
     : connectGoogle && connectClaude
       ? t("setupBar.both")
       : connectGoogle
-        ? t("setupBar.google")
+        ? g?.tasksEnabled
+          ? t("setupBar.google")
+          : t("setupBar.googleCalendar")
         : t("setupBar.claude")
 
   function hide() {
@@ -71,11 +75,17 @@ export function SetupBar(): React.ReactElement | null {
           <div className="flex flex-wrap items-center gap-2">
             {(reconnectGoogle || connectGoogle) && (
               <Button size="sm" variant="destructive" render={<Link href="/settings#google" />}>
+                <LogoTile>
+                  <GoogleLogo className="size-3" />
+                </LogoTile>
                 {reconnectGoogle ? t("setupBar.reconnectGoogle") : t("setupBar.connectGoogle")}
               </Button>
             )}
             {connectClaude && (
               <Button size="sm" variant="destructive" render={<Link href="/settings#claude" />}>
+                <LogoTile>
+                  <ClaudeMark className="size-3" />
+                </LogoTile>
                 {t("setupBar.connectClaude")}
               </Button>
             )}
@@ -96,4 +106,9 @@ export function SetupBar(): React.ReactElement | null {
       </div>
     </div>
   )
+}
+
+/** A white tile, so each brand's own colours show on the red button. */
+function LogoTile({ children }: { children: React.ReactNode }): React.ReactElement {
+  return <span className="grid size-4.5 shrink-0 place-items-center rounded-sm bg-white">{children}</span>
 }

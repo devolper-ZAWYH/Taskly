@@ -326,6 +326,10 @@ export type Dashboard = {
 export type GoogleStatus = {
   /** The server has OAuth credentials; without them there is nothing to connect. */
   configured: boolean
+  /** Tasks sync with Google Tasks on this server (Platform → Settings); meetings always sync. */
+  tasksEnabled: boolean
+  /** Tasks sync for this person: switched on, and they let Taskly into Google Tasks. */
+  tasks: boolean
   connected: boolean
   /** The connected Google account's email. */
   email: string | null
@@ -474,6 +478,8 @@ export type PlatformSettings = {
     secretSet: boolean
     /** Add this to the OAuth client's authorised redirect URIs. */
     redirectUri: string
+    /** Tasks sync with Google Tasks too; off: meetings only. */
+    tasksSync: boolean
     ready: boolean
   }
   push: { source: SettingSource; publicKey: string; ready: boolean; devices: number }
@@ -501,7 +507,7 @@ export type PlatformSettingsInput =
       from: string
       password: string
     }
-  | { group: "google"; clientId: string; clientSecret: string }
+  | { group: "google"; clientId: string; clientSecret: string; tasksSync: boolean }
   | {
       group: "translation"
       /** "" turns translation off. */

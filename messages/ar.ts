@@ -546,6 +546,9 @@ const ar: Messages = {
         clientSecret: "سر العميل",
         redirectUri: "عنوان إعادة التوجيه المعتمد",
         redirectHint: "أضفه إلى عميل OAuth في Google Cloud. عيّن عنوان التطبيق أولًا.",
+        tasksSync: "مزامنة المهام مع مهام Google",
+        tasksSyncHint:
+          "عند الإيقاف: تُرسَل الاجتماعات فقط إلى تقويم Google، ولا يطلب Taskly الوصول إلى مهام Google. من ربط حسابه أثناء الإيقاف يعيد ربط Google مرة واحدة لإضافة مهامه.",
         ready: "مزامنة Google تعمل",
         notReady: "مزامنة Google متوقفة",
       },
@@ -810,12 +813,15 @@ const ar: Messages = {
     synced: "متزامن مع Google",
     settings: {
       title: "Google",
-      hint: "تقويم Google ومهام Google، متطابقان دائمًا مع Taskly.",
+      hint: "حسابك في Google، متطابق دائمًا مع Taskly.",
       notConfigured: "مزامنة Google غير مُعدّة على هذا الخادم.",
       intro: "اربط حسابك في Google لتجمع كل شيء في مكان واحد.",
       pointWorkspace:
         "تظهر مهام واجتماعات مساحة العمل في Google، ضمن قائمة مهام وتقويم باسم «Taskly · اسم مساحة العمل» لكل مساحة عمل.",
       pointPersonal: "تظهر أحداثك ومهامك الخاصة في Google داخل Taskly، ولا يراها أحد غيرك.",
+      pointWorkspaceCalendar:
+        "تظهر اجتماعات مساحة العمل في تقويم Google، ضمن تقويم باسم «Taskly · اسم مساحة العمل» لكل مساحة عمل.",
+      pointPersonalCalendar: "تظهر أحداث تقويم Google الخاصة بك داخل Taskly، ولا يراها أحد غيرك.",
       pointBothWays: "التغييرات تسري في الاتجاهين: عدّل في Taskly أو في Google.",
       connect: "ربط Google",
       reconnect: "إعادة الربط",
@@ -830,6 +836,8 @@ const ar: Messages = {
       synced: "تمت المزامنة مع Google",
       showHint:
         "اختر أيًّا من تقويماتك وقوائم مهامك الخاصة يظهر في Taskly. أما «Taskly · …» فتُزامَن دائمًا.",
+      showHintCalendar: "اختر أيًّا من تقويماتك الخاصة يظهر في Taskly. أما «Taskly · …» فتُزامَن دائمًا.",
+      tasksReconnect: "أصبح بإمكان Taskly مزامنة مهامك مع مهام Google أيضًا. أعد ربط Google واسمح بالوصول إلى مهام Google للبدء.",
       calendars: "التقويمات",
       taskLists: "قوائم المهام",
       primaryCalendar: "التقويم الرئيسي",
@@ -844,7 +852,7 @@ const ar: Messages = {
       callback: {
         connected: "تم ربط Google",
         denied: "لم يتم ربط Google لأن الوصول لم يُسمح به.",
-        scopes: "يحتاج Taskly إلى تقويم Google ومهام Google معًا. اربط مرة أخرى واسمح بكليهما.",
+        scopes: "يحتاج Taskly إلى كل الأذونات التي يطلبها. اربط مرة أخرى واترك جميع الخيارات محددة.",
         unconfigured: "مزامنة Google غير مُعدّة على هذا الخادم.",
         failed: "تعذّر الربط مع Google. يرجى المحاولة مرة أخرى.",
       },
@@ -1002,6 +1010,7 @@ const ar: Messages = {
     label: "إعداد Taskly",
     both: "لم تربط Google وClaude بعد. اربطهما لتستفيد من Taskly بالكامل.",
     google: "لم تربط حساب Google بعد. اربطه لترى اجتماعاتك ومهامك في Taskly داخل تقويم Google ومهام Google.",
+    googleCalendar: "لم تربط حساب Google بعد. اربطه لترى اجتماعاتك في Taskly داخل تقويم Google.",
     googleReconnect: "لم يعد Taskly قادرًا على الوصول إلى حساب Google، لذا توقفت المزامنة. أعد الربط لاستئنافها.",
     claude: "لم تربط Claude بعد. اربطه لتضيف المهام وتكتب المحاضر وتخطط للاجتماعات بالمحادثة أو بالصوت.",
     connectGoogle: "ربط Google",
@@ -1127,6 +1136,7 @@ const ar: Messages = {
     userNotFound: 'لا يوجد مستخدم بهذا البريد. انتقل إلى "مستخدم جديد" لإنشائه.',
     googleNotConfigured: "لم يتم إعداد مزامنة Google على الخادم بعد.",
     googleNotConnected: "اربط حسابك في Google من الإعدادات أولًا.",
+    googleTasksOff: "مهام Google غير متزامنة مع Taskly. تبقى مهامك في Taskly.",
     googleReconnect: "فقد Taskly الوصول إلى حسابك في Google. أعد ربطه من الإعدادات.",
     googleUnavailable: "لم يستجب Google. حاول مرة أخرى بعد قليل.",
     inviteInvalid: "انتهت صلاحية رابط الدعوة هذا أو استُخدم من قبل.",

@@ -35,6 +35,7 @@ export type ErrorCode =
   | "avatarInvalid"
   | "googleNotConfigured"
   | "googleNotConnected"
+  | "googleTasksOff"
   | "googleReconnect"
   | "googleUnavailable"
   | "inviteInvalid"

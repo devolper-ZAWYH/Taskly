@@ -7,6 +7,7 @@ import ar from "@/messages/ar"
 import en from "@/messages/en"
 import type { Ctx } from "@/server/context"
 import { all, first } from "@/server/db"
+import { TASKS_SCOPE } from "@/server/google/config"
 import { appUrl } from "@/server/settings"
 import { notify, type NotificationEvent } from "@/server/services/notifications"
 
@@ -20,6 +21,8 @@ export async function connectedMembers(
   ctx: Ctx,
   accountId: string,
   userIds: string[],
+  /** Only people who let Taskly into their Google Tasks (tasks sync). */
+  options?: { tasks?: boolean },
 ): Promise<string[]> {
   if (userIds.length === 0) return []
   const rows = await all<{ user_id: string }>(
@@ -28,9 +31,12 @@ export async function connectedMembers(
      JOIN users u ON u.id = gc.user_id AND u.active = 1 AND u.deleted_at IS NULL
      JOIN memberships ms ON ms.user_id = gc.user_id AND ms.account_id = ?
      JOIN accounts a ON a.id = ms.account_id AND a.active = 1
-     WHERE gc.state = 'active' AND gc.user_id IN (SELECT value FROM json_each(?))`,
+     WHERE gc.state = 'active' AND gc.user_id IN (SELECT value FROM json_each(?))
+       AND (? = 0 OR instr(' ' || gc.scopes || ' ', ' ' || ? || ' ') > 0)`,
     accountId,
     JSON.stringify([...new Set(userIds)]),
+    options?.tasks ? 1 : 0,
+    TASKS_SCOPE,
   )
   return rows.map((row) => row.user_id)
 }

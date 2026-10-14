@@ -17,7 +17,7 @@ import type {
 import { requireOperator, requireUser, type Ctx } from "@/server/context"
 import { all, nowIso, run } from "@/server/db"
 import { googleFor } from "@/server/google/client"
-import { googleConfigured } from "@/server/google/config"
+import { googleConfigured, googleTasksEnabled, tasksSyncFor } from "@/server/google/config"
 import { purgeUser, refreshPersonalContainers } from "@/server/google/containers"
 import { failedJobCount, retryFailedJobs, syncHealth } from "@/server/google/health"
 import * as personal from "@/server/google/personal"
@@ -34,6 +34,8 @@ export async function getGoogleStatus(ctx: Ctx): Promise<GoogleStatus> {
   const row = configured ? await getConnection(ctx.db, me.id) : null
   return {
     configured,
+    tasksEnabled: configured && (await googleTasksEnabled(ctx)),
+    tasks: Boolean(row) && (await tasksSyncFor(ctx, me.id)),
     connected: Boolean(row),
     email: row?.google_email ?? null,
     state: row?.state ?? null,
@@ -51,6 +53,13 @@ async function requireConnected(ctx: Ctx): Promise<string> {
   if (!row) throw new AppError("googleNotConnected")
   if (row.state === "revoked") throw new AppError("googleReconnect")
   return me.id
+}
+
+/** Connected, with tasks sync on and Google Tasks allowed. */
+async function requireTasks(ctx: Ctx): Promise<string> {
+  const userId = await requireConnected(ctx)
+  if (!(await tasksSyncFor(ctx, userId))) throw new AppError("googleTasksOff")
+  return userId
 }
 
 /**
@@ -148,6 +157,7 @@ const optionalId = (value: unknown) => (value === null ? null : str(value, 1024)
 export async function listPersonalTasks(ctx: Ctx, params: unknown): Promise<PersonalTask[]> {
   const userId = await requireConnected(ctx)
   if (!isObject(params)) throw new AppError("badRequest")
+  if (!(await tasksSyncFor(ctx, userId))) return []
   const showCompleted = bool(params.showCompleted)
   return viaGoogle(() => personal.listTasks(ctx, userId, showCompleted))
 }
@@ -157,7 +167,7 @@ export async function createPersonalTask(
   tasklistId: unknown,
   input: unknown,
 ): Promise<PersonalTask> {
-  const userId = await requireConnected(ctx)
+  const userId = await requireTasks(ctx)
   const value = personalTaskInput(input)
   return viaGoogle(() => personal.createTask(ctx, userId, optionalId(tasklistId), value))
 }
@@ -168,13 +178,13 @@ export async function updatePersonalTask(
   id: unknown,
   patch: unknown,
 ): Promise<PersonalTask> {
-  const userId = await requireConnected(ctx)
+  const userId = await requireTasks(ctx)
   const value = personalTaskPatch(patch)
   return viaGoogle(() => personal.updateTask(ctx, userId, listId(tasklistId), str(id, 1024), value))
 }
 
 export async function deletePersonalTask(ctx: Ctx, tasklistId: unknown, id: unknown): Promise<void> {
-  const userId = await requireConnected(ctx)
+  const userId = await requireTasks(ctx)
   return viaGoogle(() => personal.deleteTask(ctx, userId, listId(tasklistId), str(id, 1024)))
 }
 

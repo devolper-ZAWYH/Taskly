@@ -8,7 +8,7 @@ import { newSessionToken } from "@/server/crypto"
 import { all, nowIso, run } from "@/server/db"
 import { calendarApi, tasksApi } from "@/server/google/apis"
 import { googleFor, isGone, type Google } from "@/server/google/client"
-import { webhookUrl } from "@/server/google/config"
+import { webhookUrl, tasksSyncFor } from "@/server/google/config"
 import { revokeToken } from "@/server/google/oauth"
 import { workspaceZone } from "@/server/google/people"
 import { enqueue } from "@/server/google/queue"
@@ -55,7 +55,8 @@ export async function setupMember(ctx: Ctx, userId: string, accountId: string): 
   const actor = await actorFor(ctx, userId, accountId)
   if (!actor) return
   const g = await googleFor(ctx, userId)
-  await ensureTasklist(ctx, g, actor)
+  const tasksOn = await tasksSyncFor(ctx, userId)
+  if (tasksOn) await ensureTasklist(ctx, g, actor)
   await ensureCalendar(ctx, g, actor)
 
   const since = new Date(Date.now() - BACKFILL_DAYS * 86_400_000).toISOString()
@@ -84,7 +85,7 @@ export async function setupMember(ctx: Ctx, userId: string, accountId: string): 
   await enqueue(
     ctx,
     [
-      ...tasks.map((t) => ({ kind: "sync_task" as const, accountId, entityId: t.id })),
+      ...(tasksOn ? tasks : []).map((t) => ({ kind: "sync_task" as const, accountId, entityId: t.id })),
       ...meetings.map((m) => ({ kind: "sync_meeting" as const, accountId, entityId: m.id })),
     ],
     { drain: false },
@@ -192,9 +193,10 @@ export async function containerGone(ctx: Ctx, row: ContainerRow): Promise<void> 
  */
 export async function refreshPersonalContainers(ctx: Ctx, g: Google, userId: string): Promise<void> {
   const [lists, calendars, defaultList, known] = await Promise.all([
-    tasksApi.lists(g),
+    // Their own task lists only while tasks sync is on (Taskly may not have Tasks access).
+    (await tasksSyncFor(ctx, userId)) ? tasksApi.lists(g) : Promise.resolve([]),
     calendarApi.calendars(g),
-    tasksApi.getList(g, "@default").catch(() => null),
+    (await tasksSyncFor(ctx, userId)) ? tasksApi.getList(g, "@default").catch(() => null) : null,
     containersOf(ctx.db, userId),
   ])
   const ours = new Set(known.filter((c) => c.account_id).map((c) => `${c.kind}:${c.google_id}`))

@@ -361,6 +361,7 @@ function GoogleSection({ settings }: { settings: PlatformSettings }): React.Reac
   const google = settings.google
   const [clientId, setClientId] = React.useState(google.clientId)
   const [clientSecret, setClientSecret] = React.useState("")
+  const [tasksSync, setTasksSync] = React.useState(google.tasksSync)
   const [copied, setCopied] = React.useState(false)
 
   return (
@@ -380,7 +381,7 @@ function GoogleSection({ settings }: { settings: PlatformSettings }): React.Reac
         className="flex flex-col gap-4"
         onSubmit={(e) => {
           e.preventDefault()
-          save.mutate({ group: "google", clientId, clientSecret }, { onSuccess: saved })
+          save.mutate({ group: "google", clientId, clientSecret, tasksSync }, { onSuccess: saved })
         }}
       >
         <FormRow label={t("platform.settings.google.clientId")} htmlFor="google-client-id">
@@ -432,6 +433,15 @@ function GoogleSection({ settings }: { settings: PlatformSettings }): React.Reac
             ) : null}
           </div>
         </FormRow>
+        <label className="flex cursor-pointer items-start justify-between gap-4 rounded-md border p-3">
+          <span>
+            <span className="block text-sm font-medium">{t("platform.settings.google.tasksSync")}</span>
+            <span className="block text-xs text-foreground-muted">
+              {t("platform.settings.google.tasksSyncHint")}
+            </span>
+          </span>
+          <Switch checked={tasksSync} onCheckedChange={setTasksSync} data-testid="google-tasks-sync" />
+        </label>
         <FormError message={save.error ? errorMessage(save.error) : null} />
         <div>
           <Button type="submit" loading={save.isPending} disabled={!clientId.trim()}>

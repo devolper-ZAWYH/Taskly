@@ -46,7 +46,7 @@ export function GoogleSettings(): React.ReactElement {
       ) : status.data.state === "revoked" || status.data.state === "error" ? (
         <Problem status={status.data} />
       ) : (
-        <NotConnected />
+        <NotConnected tasks={status.data.tasksEnabled} />
       )}
     </div>
   )
@@ -95,13 +95,16 @@ function CallbackNotice(): null {
   return null
 }
 
-function NotConnected(): React.ReactElement {
+/** `tasks`: tasks sync with Google Tasks on this server; otherwise only meetings and events. */
+function NotConnected({ tasks }: { tasks: boolean }): React.ReactElement {
   const { t } = useLocale()
-  const points: MessageKey[] = [
-    "google.settings.pointWorkspace",
-    "google.settings.pointPersonal",
-    "google.settings.pointBothWays",
-  ]
+  const points: MessageKey[] = tasks
+    ? ["google.settings.pointWorkspace", "google.settings.pointPersonal", "google.settings.pointBothWays"]
+    : [
+        "google.settings.pointWorkspaceCalendar",
+        "google.settings.pointPersonalCalendar",
+        "google.settings.pointBothWays",
+      ]
   return (
     <div className="flex flex-col gap-4 rounded-md border p-4">
       <p className="text-sm font-medium">{t("google.settings.intro")}</p>
@@ -202,7 +205,22 @@ function Connected({ status }: { status: GoogleStatus }): React.ReactElement {
         ) : null}
       </div>
 
-      {usable ? <Containers /> : null}
+      {usable && status.tasksEnabled && !status.tasks ? (
+        // Tasks sync was switched on after they connected: Google Tasks needs their OK.
+        <div
+          className="flex flex-col gap-3 rounded-md border border-brand-border bg-brand-surface-subtle p-4"
+          data-testid="google-tasks-reconnect"
+        >
+          <p className="text-sm">{t("google.settings.tasksReconnect")}</p>
+          <div>
+            <Button size="sm" render={<a href={GOOGLE_CONNECT_URL} />}>
+              {t("google.settings.reconnect")}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {usable ? <Containers tasks={status.tasks} /> : null}
 
       <div>
         <Button
@@ -231,8 +249,8 @@ function Connected({ status }: { status: GoogleStatus }): React.ReactElement {
   )
 }
 
-/** Personal calendars and lists get a switch; "Taskly · …" ones always sync. */
-function Containers(): React.ReactElement {
+/** Personal calendars and lists get a switch; "Taskly · …" ones always sync. Lists only with tasks sync. */
+function Containers({ tasks }: { tasks: boolean }): React.ReactElement {
   const { t, errorMessage } = useLocale()
   const containers = useGoogleContainers({ refresh: true, enabled: true })
 
@@ -245,17 +263,21 @@ function Containers(): React.ReactElement {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-xs text-foreground-muted">{t("google.settings.showHint")}</p>
+      <p className="text-xs text-foreground-muted">
+        {t(tasks ? "google.settings.showHint" : "google.settings.showHintCalendar")}
+      </p>
       <ContainerGroup
         kind="calendar"
         title={t("google.settings.calendars")}
         items={containers.data}
       />
-      <ContainerGroup
-        kind="tasklist"
-        title={t("google.settings.taskLists")}
-        items={containers.data}
-      />
+      {tasks ? (
+        <ContainerGroup
+          kind="tasklist"
+          title={t("google.settings.taskLists")}
+          items={containers.data}
+        />
+      ) : null}
     </div>
   )
 }

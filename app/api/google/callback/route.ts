@@ -1,7 +1,7 @@
 import { cookies } from "next/headers"
 import { currentUser } from "@/server/context"
 import { nowIso } from "@/server/db"
-import { googleClient, OAUTH_COOKIE, REQUIRED_SCOPES } from "@/server/google/config"
+import { googleClient, googleTasksEnabled, OAUTH_COOKIE, requiredScopes } from "@/server/google/config"
 import { purgeUser } from "@/server/google/containers"
 import { exchangeCode, idTokenClaims, revokeToken } from "@/server/google/oauth"
 import { enqueue } from "@/server/google/queue"
@@ -51,7 +51,8 @@ export async function GET(request: Request) {
     )
     const granted = (tokens.scope ?? "").split(" ")
     const claims = idTokenClaims(tokens.id_token)
-    if (!REQUIRED_SCOPES.every((scope) => granted.includes(scope))) {
+    const needed = requiredScopes(await googleTasksEnabled(ctx))
+    if (!needed.every((scope) => granted.includes(scope))) {
       // They unticked something sync needs; don't keep half an access.
       await revokeToken(ctx.env, tokens.refresh_token ?? tokens.access_token)
       return fail("scopes")

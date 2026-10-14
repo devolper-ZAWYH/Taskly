@@ -78,6 +78,12 @@ export function useGoogleConnected(): boolean {
   return isGoogleUsable(useGoogleStatus().data)
 }
 
+/** Connected, and their tasks sync with Google Tasks (switched on, and allowed). */
+export function useGoogleTasks(): boolean {
+  const status = useGoogleStatus().data
+  return isGoogleUsable(status) && Boolean(status?.tasks)
+}
+
 /** A refused or missing connection changes what Settings shows; re-read it. */
 function refreshStatusOn(queryClient: QueryClient, error: unknown) {
   if (

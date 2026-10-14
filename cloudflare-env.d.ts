@@ -11,6 +11,7 @@ interface __BaseEnv_CloudflareEnv {
 	APP_ORIGIN: string;
 	VAPID_PRIVATE_KEY: string;
 	GOOGLE_CLIENT_ID: string;
+	GOOGLE_TASKS_SYNC?: string;
 	GOOGLE_CLIENT_SECRET: string;
 	ENCRYPTION_KEY: string;
 	GOOGLE_API_ORIGIN: string;
@@ -40,7 +41,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "VAPID_PUBLIC_KEY" | "VAPID_SUBJECT" | "NEXTJS_ENV" | "APP_ORIGIN" | "VAPID_PRIVATE_KEY" | "GOOGLE_CLIENT_ID" | "GOOGLE_CLIENT_SECRET" | "ENCRYPTION_KEY" | "GOOGLE_API_ORIGIN" | "GOOGLE_OAUTH_ORIGIN" | "SMTP_HOST" | "SMTP_PORT" | "SMTP_SECURE" | "SMTP_USER" | "SMTP_PASS" | "MAIL_FROM" | "TRANSLATE_PROVIDER" | "TRANSLATE_KEY" | "TRANSLATE_KEY_ID" | "TRANSLATE_REGION" | "TRANSLATE_MODEL" | "TRANSLATE_API_ORIGIN">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "VAPID_PUBLIC_KEY" | "VAPID_SUBJECT" | "NEXTJS_ENV" | "APP_ORIGIN" | "VAPID_PRIVATE_KEY" | "GOOGLE_CLIENT_ID" | "GOOGLE_TASKS_SYNC" | "GOOGLE_CLIENT_SECRET" | "ENCRYPTION_KEY" | "GOOGLE_API_ORIGIN" | "GOOGLE_OAUTH_ORIGIN" | "SMTP_HOST" | "SMTP_PORT" | "SMTP_SECURE" | "SMTP_USER" | "SMTP_PASS" | "MAIL_FROM" | "TRANSLATE_PROVIDER" | "TRANSLATE_KEY" | "TRANSLATE_KEY_ID" | "TRANSLATE_REGION" | "TRANSLATE_MODEL" | "TRANSLATE_API_ORIGIN">> {}
 }
 
 // Begin runtime types

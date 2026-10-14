@@ -149,6 +149,7 @@ function MeetingDetail({
           </SheetDescription>
         ) : null}
         <SyncedToGoogle
+          kind="meeting"
           involved={meeting.organizerId === me.id || meeting.attendeeIds.includes(me.id)}
         />
       </SheetHeader>

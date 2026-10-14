@@ -19,7 +19,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { TimePicker } from "@/components/ui/time-picker"
 import { useMeetingOptions } from "@/features/calendar/hooks/use-meetings"
 import { GoogleMark } from "@/features/google/google-mark"
-import { useGoogleConnected } from "@/features/google/hooks"
+import { useGoogleTasks } from "@/features/google/hooks"
 import { AssigneePicker } from "@/features/tasks/components/assignees"
 import { PriorityLabel, StatusBadge } from "@/features/tasks/components/task-badges"
 import { PRIORITIES, STATUSES } from "@/features/tasks/lib/task-meta"
@@ -64,7 +64,7 @@ export function TaskFields({
   privateTask?: boolean
 }): React.ReactElement {
   const { t, formatDate } = useLocale()
-  const googleConnected = useGoogleConnected()
+  const googleTasks = useGoogleTasks()
   const set = <K extends keyof TaskInput>(key: K, v: TaskInput[K]) =>
     onChange({ ...value, [key]: v })
   const disabled = allDisabled || statusOnly
@@ -201,7 +201,7 @@ export function TaskFields({
       </div>
 
       {privateTask ? (
-        googleConnected ? (
+        googleTasks ? (
           <label className="flex cursor-pointer items-start justify-between gap-4 rounded-md border p-3">
             <span>
               <span className="flex items-center gap-1.5 text-sm font-medium">
