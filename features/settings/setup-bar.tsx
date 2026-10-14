@@ -33,8 +33,9 @@ export function SetupBar(): React.ReactElement | null {
   // Hidden while server-rendering, so a hidden bar never flashes.
   const hidden = React.useSyncExternalStore(subscribe, () => getSetupBarHidden(me.id), () => true)
 
-  // Both only matter to people who work in a workspace.
-  if (!workspaces.data?.length) return null
+  // Both only matter to people who work in a workspace. Operators see every
+  // workspace (viaOperator), but that doesn't make them members of any.
+  if (!workspaces.data?.some((w) => !w.viaOperator)) return null
   const g = google.data
   const c = claude.data
   const reconnectGoogle = Boolean(g?.configured && g.connected && g.state === "revoked")
