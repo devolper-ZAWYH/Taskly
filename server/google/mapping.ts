@@ -63,6 +63,11 @@ export type GoogleEvent = {
   updated?: string
   htmlLink?: string
   organizer?: { email?: string; self?: boolean }
+  attendees?: { email?: string; self?: boolean; resource?: boolean }[]
+  /** The same for every guest's copy of the event. */
+  iCalUID?: string
+  /** For an occurrence of a repeating event: when it was originally scheduled. */
+  originalStartTime?: GoogleEventTime
   guestsCanModify?: boolean
   /** "default", or a special kind (birthday, focusTime, outOfOffice, fromGmail, …). */
   eventType?: string
@@ -272,4 +277,28 @@ export function actionItemLines(
   })
   if (items.length > max) lines.push(words.more.replace("{count}", String(items.length - max)))
   return lines
+}
+
+/**
+ * Which event (and which occurrence of a repeating one) a meeting was added
+ * from, the same in every guest's calendar: "<iCalUID>#<original start>".
+ */
+export function eventSourceKey(event: GoogleEvent): string {
+  const at = event.originalStartTime ?? event.start
+  const start = at?.dateTime ? new Date(at.dateTime).toISOString() : (at?.date ?? "")
+  return `${event.iCalUID ?? event.id}#${start}`
+}
+
+/** The other people on an event (organiser and guests; not rooms, not whoever is reading it), lowercased. */
+export function eventGuestEmails(event: GoogleEvent): string[] {
+  const emails = [
+    event.organizer?.self ? undefined : event.organizer?.email,
+    ...(event.attendees ?? []).filter((a) => !a.resource && !a.self).map((a) => a.email),
+  ]
+  return [...new Set(emails.filter((e): e is string => Boolean(e)).map((e) => e.trim().toLowerCase()))]
+}
+
+/** Meeting fields for adding one event (or one occurrence of a repeating one) to a workspace. */
+export function importableFields(event: GoogleEvent, zone: string): MeetingFields | null {
+  return eventFields({ ...event, recurrence: undefined, recurringEventId: undefined }, zone)
 }

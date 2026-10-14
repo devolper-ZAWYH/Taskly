@@ -441,6 +441,13 @@ export type PersonalEvent = {
   htmlLink: string | null
 }
 
+/** A Google event as a workspace meeting would have it, before the person confirms. */
+export type GoogleEventImport = {
+  meeting: MeetingInput
+  /** Guests who aren't in the workspace: not invited. */
+  unmatched: string[]
+}
+
 /** Times are wall-clock in `timeZone` (the browser's zone). */
 export type PersonalEventInput = {
   title: string

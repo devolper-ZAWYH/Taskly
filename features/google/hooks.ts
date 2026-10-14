@@ -9,8 +9,10 @@ import {
 } from "@tanstack/react-query"
 import { meetingKeys } from "@/features/calendar/hooks/use-meetings"
 import { taskKeys } from "@/features/tasks/hooks/use-tasks"
+import { useWorkspace } from "@/features/workspace/workspace-context"
 import { AppError } from "@/lib/api/core"
 import {
+  addGoogleEventToWorkspace,
   createPersonalEvent,
   createPersonalTask,
   deletePersonalEvent,
@@ -20,6 +22,7 @@ import {
   listGoogleContainers,
   listPersonalEvents,
   listPersonalTasks,
+  previewGoogleEventImport,
   setGoogleContainerSelected,
   syncGoogleNow,
   updatePersonalEvent,
@@ -29,6 +32,7 @@ import type {
   GoogleContainer,
   GoogleContainerKind,
   GoogleStatus,
+  MeetingInput,
   PersonalEventInput,
   PersonalTask,
   PersonalTaskInput,
@@ -254,5 +258,29 @@ export function useDeletePersonalEvent() {
     mutationFn: (v: { calendarId: string; id: string }) => deletePersonalEvent(v.calendarId, v.id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: googleKeys.events }),
     onError: (error) => refreshStatusOn(queryClient, error),
+  })
+}
+
+/** What adding a Google event to the current workspace would create (fills the meeting form). */
+export function usePreviewGoogleEventImport() {
+  const { accountId } = useWorkspace()
+  return useMutation({
+    mutationFn: ({ calendarId, eventId }: { calendarId: string; eventId: string }) =>
+      previewGoogleEventImport(accountId, calendarId, eventId),
+  })
+}
+
+/** Add a Google event to the current workspace: the meeting replaces it in Taskly's calendar. */
+export function useAddGoogleEventToWorkspace() {
+  const { accountId } = useWorkspace()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ calendarId, eventId, input }: { calendarId: string; eventId: string; input: MeetingInput }) =>
+      addGoogleEventToWorkspace(accountId, calendarId, eventId, input),
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: googleKeys.events }),
+        queryClient.invalidateQueries({ queryKey: meetingKeys.all }),
+      ]),
   })
 }

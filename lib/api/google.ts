@@ -2,8 +2,11 @@ import { rpc } from "@/lib/api/rpc"
 import type {
   GoogleContainer,
   GoogleContainerKind,
+  GoogleEventImport,
   GoogleStatus,
   GoogleSyncHealth,
+  Meeting,
+  MeetingInput,
   PersonalEvent,
   PersonalEventInput,
   PersonalTask,
@@ -79,6 +82,19 @@ export const updatePersonalEvent = (
 
 export const deletePersonalEvent = (calendarId: string, id: string): Promise<void> =>
   rpc("deletePersonalEvent", calendarId, id)
+
+export const previewGoogleEventImport = (
+  accountId: string,
+  calendarId: string,
+  eventId: string,
+): Promise<GoogleEventImport> => rpc("previewGoogleEventImport", accountId, calendarId, eventId)
+
+export const addGoogleEventToWorkspace = (
+  accountId: string,
+  calendarId: string,
+  eventId: string,
+  input: MeetingInput,
+): Promise<Meeting> => rpc("addGoogleEventToWorkspace", accountId, calendarId, eventId, input)
 
 /** Operators: failing sync work and people who must reconnect. */
 export const getGoogleSyncHealth = (): Promise<GoogleSyncHealth> => rpc("getGoogleSyncHealth")

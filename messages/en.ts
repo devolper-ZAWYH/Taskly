@@ -345,6 +345,13 @@ const en = {
       submit: "Create meeting",
       created: "Meeting scheduled",
     },
+    import: {
+      title: "Add to workspace",
+      description:
+        "Check the details, then add it. Taskly shows this meeting instead of the Google event; the original stays in Google Calendar.",
+      unmatched: "Not in this workspace, so not invited:",
+      added: "Added to the workspace",
+    },
     edit: {
       title: "Edit meeting",
       saved: "Meeting updated",
@@ -884,6 +891,10 @@ const en = {
         calendar: "Calendar",
         description: "Description",
         openInGoogle: "Open in Google Calendar",
+        addTitle: "Get minutes and action items in {workspace}",
+        addHint: "Add this event to the workspace as a meeting. The original stays in Google Calendar.",
+        addAskAdmin: "Ask an administrator to add it to the workspace as a meeting.",
+        add: "Add to workspace",
         occurrenceOnly: "Changes apply to this occurrence only.",
         readOnly: "Someone else organises this event, so it can't be changed here.",
         multiDay: "This event spans more than one day. Change it in Google Calendar.",
@@ -1158,6 +1169,8 @@ const en = {
     googleNotConfigured: "Google sync isn't set up on the server yet.",
     googleNotConnected: "Connect your Google account in Settings first.",
     googleTasksOff: "Google Tasks isn't synced with Taskly. Your tasks stay in Taskly.",
+    googleEventNotImportable:
+      "Only events with a start and end time on the same day can become workspace meetings.",
     googleReconnect: "Taskly lost access to your Google account. Reconnect it in Settings.",
     googleUnavailable: "Google didn't respond. Try again in a moment.",
     inviteInvalid: "This invitation link has expired or was already used.",

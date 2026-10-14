@@ -7,23 +7,29 @@ import { AppError } from "@/lib/api/core"
 import type {
   GoogleContainer,
   GoogleContainerKind,
+  GoogleEventImport,
   GoogleStatus,
   GoogleSyncHealth,
+  Meeting,
   PersonalEvent,
   PersonalEventInput,
   PersonalTask,
   PersonalTaskInput,
 } from "@/lib/types"
-import { requireOperator, requireUser, type Ctx } from "@/server/context"
+import { requireOperator, requireUser, requireWorkspaceAdmin, type Ctx } from "@/server/context"
 import { all, nowIso, run } from "@/server/db"
+import { calendarApi } from "@/server/google/apis"
 import { googleFor } from "@/server/google/client"
 import { googleConfigured, googleTasksEnabled, tasksSyncFor } from "@/server/google/config"
 import { purgeUser, refreshPersonalContainers } from "@/server/google/containers"
 import { failedJobCount, retryFailedJobs, syncHealth } from "@/server/google/health"
+import { eventGuestEmails, eventSourceKey, importableFields } from "@/server/google/mapping"
+import { workspaceZone } from "@/server/google/people"
 import * as personal from "@/server/google/personal"
 import { viaGoogle } from "@/server/google/personal"
-import { drainJobs, enqueue } from "@/server/google/queue"
+import { drainJobs, enqueue, queueGoogleSync } from "@/server/google/queue"
 import { containersOf, getConnection, toContainer, type ContainerRow } from "@/server/google/store"
+import { createMeetingAs } from "@/server/services/meetings"
 import { bool, date, isObject, oneOf, str, time, timeZone } from "@/server/validate"
 
 const KINDS = ["tasklist", "calendar"] as const satisfies readonly GoogleContainerKind[]
@@ -258,4 +264,86 @@ export async function retryFailedGoogleJobs(ctx: Ctx): Promise<GoogleSyncHealth>
   await requireOperator(ctx)
   if (await retryFailedJobs(ctx)) await drainJobs(ctx, { limit: 25, budgetMs: 15_000 })
   return getGoogleSyncHealth(ctx)
+}
+
+// ---- Adding a Google event to a workspace -------------------------------------------
+
+/** One of the person's own Google events, read fresh from one of their own calendars. */
+async function ownEvent(ctx: Ctx, userId: string, calendarId: unknown, eventId: unknown) {
+  const calendar = (await containersOf(ctx.db, userId)).find(
+    (c) => c.kind === "calendar" && c.account_id === null && c.google_id === str(calendarId, 1024),
+  )
+  if (!calendar) throw new AppError("notFound")
+  const g = await googleFor(ctx, userId)
+  return viaGoogle(() => calendarApi.get(g, calendar.google_id, str(eventId, 1024)))
+}
+
+/**
+ * The meeting an administrator would get from one of their Google events: its
+ * details as wall-clock times in the workspace's zone, and its guests matched
+ * to workspace people by any of their confirmed addresses. `unmatched`: guests
+ * who aren't in the workspace (the form says so; they aren't invited).
+ */
+export async function previewGoogleEventImport(
+  ctx: Ctx,
+  accountId: string,
+  calendarId: unknown,
+  eventId: unknown,
+): Promise<GoogleEventImport> {
+  const userId = await requireConnected(ctx)
+  await requireWorkspaceAdmin(ctx, accountId)
+  const event = await ownEvent(ctx, userId, calendarId, eventId)
+  const fields = importableFields(event, await workspaceZone(ctx, accountId, userId))
+  if (!fields) throw new AppError("googleEventNotImportable")
+
+  const people = await all<{ id: string; email: string }>(
+    ctx.db,
+    `SELECT u.id, lower(u.email) AS email FROM memberships ms
+       JOIN users u ON u.id = ms.user_id AND u.active = 1 AND u.deleted_at IS NULL
+     WHERE ms.account_id = ?
+     UNION
+     SELECT ue.user_id AS id, lower(ue.email) AS email FROM user_emails ue
+       JOIN memberships ms ON ms.user_id = ue.user_id AND ms.account_id = ?
+       JOIN users u ON u.id = ue.user_id AND u.active = 1 AND u.deleted_at IS NULL
+     WHERE ue.verified_at IS NOT NULL`,
+    accountId,
+    accountId,
+  )
+  const byEmail = new Map(people.map((p) => [p.email, p.id]))
+  // Their own addresses: in Taskly, and the Google account they connected.
+  const connection = await getConnection(ctx.db, userId)
+  const mine = new Set([
+    ...people.filter((p) => p.id === userId).map((p) => p.email),
+    ...(connection ? [connection.google_email.toLowerCase()] : []),
+  ])
+  const attendeeIds = new Set<string>()
+  const unmatched: string[] = []
+  for (const email of eventGuestEmails(event)) {
+    const id = byEmail.get(email)
+    if (id === userId || mine.has(email)) continue
+    if (id) attendeeIds.add(id)
+    else unmatched.push(email)
+  }
+  return { meeting: { ...fields, attendeeIds: [...attendeeIds] }, unmatched }
+}
+
+/**
+ * Add one of the person's Google events to a workspace as a meeting, with the
+ * details they confirmed in the form. The original stays in Google; Taskly
+ * shows the meeting in its place to everyone who can see it.
+ */
+export async function addGoogleEventToWorkspace(
+  ctx: Ctx,
+  accountId: string,
+  calendarId: unknown,
+  eventId: unknown,
+  input: unknown,
+): Promise<Meeting> {
+  const userId = await requireConnected(ctx)
+  const actor = await requireWorkspaceAdmin(ctx, accountId)
+  const event = await ownEvent(ctx, userId, calendarId, eventId)
+  const meeting = await createMeetingAs(ctx, actor, input)
+  await run(ctx.db, "UPDATE meetings SET google_source = ? WHERE id = ?", eventSourceKey(event), meeting.id)
+  await queueGoogleSync(ctx, "meeting", accountId, meeting.id)
+  return meeting
 }

@@ -347,6 +347,13 @@ const ar: Messages = {
       submit: "إنشاء الاجتماع",
       created: "تم تحديد موعد الاجتماع",
     },
+    import: {
+      title: "إضافة إلى مساحة العمل",
+      description:
+        "راجع التفاصيل ثم أضفه. يعرض Taskly هذا الاجتماع بدلًا من حدث Google، ويبقى الحدث الأصلي في تقويم Google.",
+      unmatched: "ليسوا في مساحة العمل، لذا لن تتم دعوتهم:",
+      added: "تمت الإضافة إلى مساحة العمل",
+    },
     edit: {
       title: "تعديل الاجتماع",
       saved: "تم تحديث الاجتماع",
@@ -875,6 +882,10 @@ const ar: Messages = {
         calendar: "التقويم",
         description: "الوصف",
         openInGoogle: "فتح في تقويم Google",
+        addTitle: "احصل على المحضر وبنود العمل في {workspace}",
+        addHint: "أضف هذا الحدث إلى مساحة العمل كاجتماع. يبقى الحدث الأصلي في تقويم Google.",
+        addAskAdmin: "اطلب من أحد المسؤولين إضافته إلى مساحة العمل كاجتماع.",
+        add: "إضافة إلى مساحة العمل",
         occurrenceOnly: "تنطبق التغييرات على هذا الموعد فقط.",
         readOnly: "ينظّم هذا الحدث شخص آخر، لذا لا يمكن تغييره من هنا.",
         multiDay: "يمتد هذا الحدث لأكثر من يوم. غيّره من تقويم Google.",
@@ -1144,6 +1155,7 @@ const ar: Messages = {
     googleNotConfigured: "لم يتم إعداد مزامنة Google على الخادم بعد.",
     googleNotConnected: "اربط حسابك في Google من الإعدادات أولًا.",
     googleTasksOff: "مهام Google غير متزامنة مع Taskly. تبقى مهامك في Taskly.",
+    googleEventNotImportable: "يمكن تحويل الأحداث التي تبدأ وتنتهي في اليوم نفسه فقط إلى اجتماعات في مساحة العمل.",
     googleReconnect: "فقد Taskly الوصول إلى حسابك في Google. أعد ربطه من الإعدادات.",
     googleUnavailable: "لم يستجب Google. حاول مرة أخرى بعد قليل.",
     inviteInvalid: "انتهت صلاحية رابط الدعوة هذا أو استُخدم من قبل.",

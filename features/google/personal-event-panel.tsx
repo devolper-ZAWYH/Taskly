@@ -7,6 +7,7 @@ import {
   MapPinIcon,
   PencilIcon,
   Trash2Icon,
+  UsersIcon,
 } from "lucide-react"
 import * as React from "react"
 import { ConfirmDialog } from "@/components/shell/confirm-dialog"
@@ -41,18 +42,27 @@ export function PersonalEventPanel({
   open,
   onClose,
   onEdit,
+  addToWorkspace,
 }: {
   /** Kept after closing so the panel can animate out with its content. */
   span: EventSpan | null
   open: boolean
   onClose: () => void
   onEdit: (span: EventSpan) => void
+  /** Turning the event into a workspace meeting: offered to administrators, mentioned to members. */
+  addToWorkspace: AddToWorkspace
 }): React.ReactElement {
   return (
     <Sheet open={open && Boolean(span)} onOpenChange={(next) => !next && onClose()}>
       <SheetPopup className="max-w-xl" data-testid="personal-event-panel">
         {span ? (
-          <EventDetail key={span.event.id} span={span} onClose={onClose} onEdit={onEdit} />
+          <EventDetail
+            key={span.event.id}
+            span={span}
+            onClose={onClose}
+            onEdit={onEdit}
+            addToWorkspace={addToWorkspace}
+          />
         ) : null}
       </SheetPopup>
     </Sheet>
@@ -101,14 +111,20 @@ function useWhen(span: EventSpan): React.ReactNode {
   }).formatRange(new Date(event.start), new Date(event.end))
 }
 
+export type AddToWorkspace =
+  | { allowed: true; workspaceName: string; pending: boolean; onAdd: (span: EventSpan) => void }
+  | { allowed: false; workspaceName: string }
+
 function EventDetail({
   span,
   onClose,
   onEdit,
+  addToWorkspace,
 }: {
   span: EventSpan
   onClose: () => void
   onEdit: (span: EventSpan) => void
+  addToWorkspace: AddToWorkspace
 }): React.ReactElement {
   const { t } = useLocale()
   const { event } = span
@@ -197,6 +213,39 @@ function EventDetail({
               {t("google.calendar.panel.private")}
             </p>
           </div>
+
+          {/* A timed, single-day event can become a workspace meeting, with minutes and action items. */}
+          {!event.allDay && span.startKey === span.endKey ? (
+            <section
+              className="flex flex-col gap-3 rounded-md border border-brand-border bg-brand-surface-subtle p-4"
+              data-testid="add-to-workspace"
+            >
+              <div className="flex items-start gap-2">
+                <UsersIcon className="mt-0.5 size-4 shrink-0 text-brand-ink" aria-hidden="true" />
+                <div className="flex flex-col gap-0.5">
+                  <p className="text-sm font-medium">
+                    {t("google.calendar.panel.addTitle", { workspace: addToWorkspace.workspaceName })}
+                  </p>
+                  <p className="text-xs text-foreground-secondary">
+                    {addToWorkspace.allowed
+                      ? t("google.calendar.panel.addHint")
+                      : t("google.calendar.panel.addAskAdmin")}
+                  </p>
+                </div>
+              </div>
+              {addToWorkspace.allowed ? (
+                <div>
+                  <Button
+                    size="sm"
+                    loading={addToWorkspace.pending}
+                    onClick={() => addToWorkspace.onAdd(span)}
+                  >
+                    {t("google.calendar.panel.add")}
+                  </Button>
+                </div>
+              ) : null}
+            </section>
+          ) : null}
 
           {event.htmlLink ? (
             <a
