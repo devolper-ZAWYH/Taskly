@@ -1011,6 +1011,17 @@ const en = {
       "It may have expired or already been used. Ask your administrator to send a new invitation.",
     toLogin: "Go to sign in",
   },
+  setupBar: {
+    label: "Set up Taskly",
+    both: "Google and Claude aren't connected yet. Connect them to get the most out of Taskly.",
+    google: "Google isn't connected yet. Connect it to see your Taskly meetings and tasks in Google Calendar and Google Tasks.",
+    googleReconnect: "Taskly can no longer reach your Google account, so syncing has stopped. Reconnect to start again.",
+    claude: "Claude isn't connected yet. Connect it to add tasks, write minutes and plan meetings by chat or voice.",
+    connectGoogle: "Connect Google",
+    reconnectGoogle: "Reconnect Google",
+    connectClaude: "Set up Claude",
+    hide: "Hide for a week",
+  },
   claude: {
     setup: {
       title: "Set up MCP",
@@ -1074,12 +1085,6 @@ const en = {
       disconnectBody:
         "{app} will lose access to your Taskly account straight away. You can connect again at any time.",
       disconnected: "Disconnected",
-    },
-    card: {
-      title: "Use Taskly in Claude",
-      body: "Add tasks, write minutes and plan meetings by chat or voice.",
-      setUp: "Set up",
-      dismiss: "Dismiss",
     },
     consent: {
       eyebrow: "Connect an app",

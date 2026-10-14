@@ -9,6 +9,7 @@ import { SidebarCollapseProvider } from "@/components/shell/sidebar-collapse"
 import { NotificationsProvider } from "@/features/notifications/notifications-panel"
 import { useMe } from "@/features/auth/use-auth"
 import { GoogleSyncOnOpen } from "@/features/google/sync-on-open"
+import { SetupBar } from "@/features/settings/setup-bar"
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -34,6 +35,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="flex min-h-svh">
           <Sidebar />
           <div className="flex w-0 min-w-0 flex-1 flex-col">
+            <SetupBar />
             <MobileTopNav />
             <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-8 sm:py-10">{children}</main>
             <MobileBottomNav />

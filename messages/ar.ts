@@ -998,6 +998,17 @@ const ar: Messages = {
     invalidBody: "ربما انتهت صلاحيته أو استُخدم من قبل. اطلب من المسؤول إرسال دعوة جديدة.",
     toLogin: "الذهاب إلى تسجيل الدخول",
   },
+  setupBar: {
+    label: "إعداد Taskly",
+    both: "لم تربط Google وClaude بعد. اربطهما لتستفيد من Taskly بالكامل.",
+    google: "لم تربط حساب Google بعد. اربطه لترى اجتماعاتك ومهامك في Taskly داخل تقويم Google ومهام Google.",
+    googleReconnect: "لم يعد Taskly قادرًا على الوصول إلى حساب Google، لذا توقفت المزامنة. أعد الربط لاستئنافها.",
+    claude: "لم تربط Claude بعد. اربطه لتضيف المهام وتكتب المحاضر وتخطط للاجتماعات بالمحادثة أو بالصوت.",
+    connectGoogle: "ربط Google",
+    reconnectGoogle: "إعادة ربط Google",
+    connectClaude: "إعداد Claude",
+    hide: "إخفاء لمدة أسبوع",
+  },
   claude: {
     setup: {
       title: "إعداد MCP",
@@ -1060,12 +1071,6 @@ const ar: Messages = {
       disconnectTitle: "قطع الاتصال بـ Claude؟",
       disconnectBody: "سيفقد {app} الوصول إلى حسابك في Taskly فورًا. يمكنك الربط مجددًا في أي وقت.",
       disconnected: "تم قطع الاتصال",
-    },
-    card: {
-      title: "استخدم Taskly في Claude",
-      body: "أضف المهام واكتب المحاضر وخطط للاجتماعات بالمحادثة أو بالصوت.",
-      setUp: "إعداد",
-      dismiss: "إخفاء",
     },
     consent: {
       eyebrow: "ربط تطبيق",

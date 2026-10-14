@@ -139,7 +139,7 @@ export default function SettingsPage() {
         <EmailAddresses />
       </Section>
 
-      <Section title={t("google.settings.title")} hint={t("google.settings.hint")}>
+      <Section id="google" title={t("google.settings.title")} hint={t("google.settings.hint")}>
         {/* Reads ?google=… after Google's consent screen, so it needs a Suspense boundary. */}
         <React.Suspense>
           <GoogleSettings />
