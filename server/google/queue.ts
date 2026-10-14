@@ -88,21 +88,32 @@ export async function enqueue(
   if (queued && options.drain !== false) ctx.waitUntil(drainJobs(ctx).catch(logDrainError))
 }
 
-/** After a task or meeting changes in Taskly: bring every person's Google copy in line. */
+/**
+ * After a task or meeting changes in Taskly: bring every person's Google copy
+ * in line. A task's meeting is refreshed too, since its Google copies list
+ * the action items; `meetings` adds meetings it was linked to before (a task
+ * moved to another meeting, or deleted).
+ */
 export async function queueGoogleSync(
   ctx: Ctx,
   kind: "task" | "meeting",
   accountId: string,
   entityId: string,
-  options?: { drain?: boolean },
+  options?: { drain?: boolean; meetings?: (string | null)[] },
 ): Promise<void> {
+  if (kind === "meeting") return enqueue(ctx, [{ kind: "sync_meeting", accountId, entityId }], options)
+  const jobs: Job[] = []
   // Tasks only go to Google while tasks sync is switched on.
-  if (kind === "task" && !(await googleTasksEnabled(ctx))) return
-  return enqueue(
-    ctx,
-    [{ kind: kind === "task" ? "sync_task" : "sync_meeting", accountId, entityId }],
-    options,
+  if (await googleTasksEnabled(ctx)) jobs.push({ kind: "sync_task", accountId, entityId })
+  const row = await first<{ meeting_id: string | null }>(
+    ctx.db,
+    "SELECT meeting_id FROM tasks WHERE id = ?",
+    entityId,
   )
+  for (const meetingId of new Set([row?.meeting_id, ...(options?.meetings ?? [])])) {
+    if (meetingId) jobs.push({ kind: "sync_meeting", accountId, entityId: meetingId })
+  }
+  return enqueue(ctx, jobs, options)
 }
 
 /** After a workspace's time zone changed: rewrite the times on every Google copy of its meetings. */

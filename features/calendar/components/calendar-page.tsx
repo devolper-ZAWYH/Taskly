@@ -85,6 +85,9 @@ export function CalendarPage(): React.ReactElement {
   const [pickedDay, setPickedDay] = React.useState<string | null>(null)
   const date = parseDateKey(searchParams.get("date"), new Date())
   const meetingId = searchParams.get("meeting")
+  // Links from a meeting's Google copy: open straight into writing minutes or adding a task.
+  const action = searchParams.get("action")
+  const startWith = action === "minutes" || action === "task" ? action : null
 
   const [showTasks, setShowTasks] = React.useState(true)
   const [form, setForm] = React.useState<MeetingFormState | null>(null)
@@ -364,7 +367,9 @@ export function CalendarPage(): React.ReactElement {
 
       <MeetingPanel
         meetingId={meetingId}
-        onClose={() => setParams({ meeting: null })}
+        onClose={() => setParams({ meeting: null, action: null })}
+        startWith={startWith}
+        onStarted={() => setParams({ action: null })}
         onEdit={(meeting) => setForm({ mode: "edit", meeting })}
         onOpenTask={openTask}
       />

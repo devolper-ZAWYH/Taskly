@@ -46,11 +46,16 @@ export function MeetingPanel({
   onClose,
   onEdit,
   onOpenTask,
+  startWith = null,
+  onStarted,
 }: {
   meetingId: string | null
   onClose: () => void
   onEdit: (meeting: Meeting) => void
   onOpenTask: (task: Task) => void
+  /** Open straight into writing minutes or adding an action item. */
+  startWith?: "minutes" | "task" | null
+  onStarted?: () => void
 }): React.ReactElement {
   const { t } = useLocale()
   const query = useMeeting(meetingId)
@@ -65,6 +70,8 @@ export function MeetingPanel({
             onClose={onClose}
             onEdit={onEdit}
             onOpenTask={onOpenTask}
+            startWith={startWith}
+            onStarted={onStarted}
           />
         ) : query.isError ? (
           <SheetHeader>
@@ -89,11 +96,15 @@ function MeetingDetail({
   onClose,
   onEdit,
   onOpenTask,
+  startWith,
+  onStarted,
 }: {
   meeting: Meeting
   onClose: () => void
   onEdit: (meeting: Meeting) => void
   onOpenTask: (task: Task) => void
+  startWith: "minutes" | "task" | null
+  onStarted?: () => void
 }): React.ReactElement {
   const { t, intl } = useLocale()
   const me = useViewer()
@@ -101,9 +112,15 @@ function MeetingDetail({
   const actionItems = useMeetingTasks(meeting.id)
   const deleteMeeting = useDeleteMeeting()
   const [confirmDelete, setConfirmDelete] = React.useState(false)
-  const [createOpen, setCreateOpen] = React.useState(false)
-
   const canEdit = canEditMeeting(me)
+  // From the first render: the link's ?action= is cleared right away.
+  const [createOpen, setCreateOpen] = React.useState(startWith === "task" && canEdit)
+  const [writeMinutes] = React.useState(startWith === "minutes")
+  React.useEffect(() => {
+    if (startWith) onStarted?.()
+    // Once, when the panel opens from such a link.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const organizer = people?.find((p) => p.id === meeting.organizerId)
   const attendees = meeting.attendeeIds
     .map((id) => people?.find((p) => p.id === id))
@@ -210,7 +227,7 @@ function MeetingDetail({
             ) : null}
           </section>
 
-          <MeetingMinutesSection meeting={meeting} people={people} />
+          <MeetingMinutesSection meeting={meeting} people={people} autoWrite={writeMinutes} />
 
           <section className="flex flex-col gap-3 border-t pt-6" data-testid="action-items">
             <div className="flex items-start justify-between gap-3">

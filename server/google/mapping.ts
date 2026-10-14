@@ -251,3 +251,25 @@ export function eventPatchBody(
     recurrence: [],
   }
 }
+
+/** One task linked to a meeting, as its Google copy lists it. */
+export type ActionItem = { title: string; done: boolean; names: string[]; due: string }
+
+/**
+ * "• Title — Omar, Sara, due 2026-10-20" (done ones ticked and without a due
+ * date), at most `max` lines, then "+N more". `words.dueOn` holds `{date}` and
+ * `words.more` holds `{count}`, in the reader's language.
+ */
+export function actionItemLines(
+  items: ActionItem[],
+  words: { dueOn: string; more: string },
+  max: number,
+): string[] {
+  const lines = items.slice(0, max).map((item) => {
+    const people = item.names.length > 0 ? ` — ${item.names.join(", ")}` : ""
+    const due = item.due && !item.done ? words.dueOn.replace("{date}", item.due) : ""
+    return `${item.done ? "✓" : "•"} ${item.title}${people}${due}`
+  })
+  if (items.length > max) lines.push(words.more.replace("{count}", String(items.length - max)))
+  return lines
+}

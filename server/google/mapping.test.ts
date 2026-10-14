@@ -2,9 +2,10 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import type { Meeting, Task } from "@/lib/types"
 import {
+  actionItemLines,
   eventFields,
-  footerTaskId,
   FOOTER_MARK,
+  footerTaskId,
   googleEventBody,
   googleTaskBody,
   googleTaskFields,
@@ -130,4 +131,27 @@ test("a Google copy is traced back to its task by the footer link", () => {
   // A link above the footer is the person's own text, not Taskly's.
   assert.equal(footerTaskId("see https://x/w/acc/tasks?task=t-9"), null)
   assert.equal(footerTaskId(""), null)
+})
+
+test("action items in a meeting's Google copy", () => {
+  const words = { dueOn: ", due {date}", more: "+{count} more in Taskly" }
+  const items = [
+    { title: "Sales report", done: false, names: ["Omar", "Sara"], due: "2026-10-20" },
+    { title: "Book the room", done: false, names: [], due: "" },
+    { title: "Send agenda", done: true, names: ["Sara"], due: "2026-10-10" },
+  ]
+  assert.deepEqual(actionItemLines(items, words, 10), [
+    "• Sales report — Omar, Sara, due 2026-10-20",
+    "• Book the room",
+    "✓ Send agenda — Sara",
+  ])
+  assert.deepEqual(actionItemLines(items, words, 2), [
+    "• Sales report — Omar, Sara, due 2026-10-20",
+    "• Book the room",
+    "+1 more in Taskly",
+  ])
+  // Arabic words keep their own punctuation.
+  assert.deepEqual(actionItemLines([items[0]], { dueOn: "، الاستحقاق {date}", more: "" }, 10), [
+    "• Sales report — Omar, Sara، الاستحقاق 2026-10-20",
+  ])
 })

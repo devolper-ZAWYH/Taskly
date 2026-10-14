@@ -815,6 +815,13 @@ const en = {
       attendees: "Attendees: {names}",
       open: "Open in Taskly: {url}",
       hint: "Edit above this line. Taskly writes this part.",
+      actionItems: "Action items:",
+      dueOn: ", due {date}",
+      moreItems: "+{count} more in Taskly",
+      minutesYours: "Your minutes: {url}",
+      minutesBy: "Minutes by {name}: {url}",
+      writeMinutes: "Write minutes: {url}",
+      addTask: "Add a task: {url}",
     },
     /** Google sync screens: Settings, calendar, Personal tasks, dashboard. */
     mark: "Google",
