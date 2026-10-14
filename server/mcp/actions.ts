@@ -18,7 +18,7 @@ import type { MeetingInput, TaskInput } from "@/lib/types"
 import type { Ctx } from "@/server/context"
 import { wallClock } from "@/server/google/mapping"
 import { CARD_META } from "@/server/mcp/cards/resource"
-import type { DelegationReview, MeetingReview, NamedPerson, NeedsChoice } from "@/server/mcp/cards/types"
+import type { Clash, DelegationReview, MeetingReview, NamedPerson, NeedsChoice } from "@/server/mcp/cards/types"
 import { saveDraft, takeDraft } from "@/server/mcp/drafts"
 import { matchPerson, type Person } from "@/server/mcp/match"
 import {
@@ -46,36 +46,38 @@ import { createTask, updateTask } from "@/server/services/tasks"
 import { PRIORITIES } from "@/server/validate"
 
 /** Writing needs the `taskly.write` scope; a read-only connection is asked to step up. */
-const WRITE = { scopeChallenge: requireScopes("taskly.write") }
+export const WRITE = { scopeChallenge: requireScopes("taskly.write") }
 
-const PEOPLE = z
+export const PEOPLE = z
   .array(z.string().min(1).max(200))
   .max(50)
   .describe("Names, emails or ids, as the person said them. Misspellings and Arabic spellings are fine.")
 
-const notAdmin = (w: Workspace, what: string) =>
+export const notAdmin = (w: Workspace, what: string) =>
   `Only administrators of ${w.name} can ${what}. Tell the person, suggest asking an administrator, and don't create anything.`
 
-const CONFIRM = (create: string) =>
+export const CONFIRM = (create: string) =>
   `If the person confirms, call ${create} with this draft. If they press Create on the card instead, it is created there and you'll be told; don't create it again. If they change anything, review again.`
 
-const expired = (review: string) =>
+export const expired = (review: string) =>
   `This review has expired (they last 15 minutes) or was already used. Run ${review} again and show the person the new summary.`
 
-type Resolved = Person & { understoodFrom?: string; avatarUrl: string | null }
+export type Resolved = Person & { understoodFrom?: string; avatarUrl: string | null }
 
-type Unresolved = { choices: NeedsChoice["choices"]; missing: string[] }
+export type Unresolved = { choices: NeedsChoice["choices"]; missing: string[] }
 
 /**
  * Turn what the person said into members. Returns the choices instead when a
  * name fits several people, or nobody: Claude must ask, never guess.
  */
-async function resolvePeople(
+export async function resolvePeople(
   ctx: Ctx,
   w: Workspace,
   queries: string[],
+  /** The workspace's people, when the caller already loaded them. */
+  loaded?: Awaited<ReturnType<typeof listPeople>>,
 ): Promise<{ people: Resolved[] } | Unresolved> {
-  const members = (await listPeople(ctx, w.id)).filter((m) => m.active)
+  const members = (loaded ?? (await listPeople(ctx, w.id))).filter((m) => m.active)
   const avatars = new Map(members.map((m) => [m.id, m.avatarUrl]))
   const people: Resolved[] = []
   const unresolved: Unresolved = { choices: [], missing: [] }
@@ -101,7 +103,7 @@ async function resolvePeople(
 }
 
 /** For Claude: who the unclear names could be. */
-function unclear(w: Workspace, { choices, missing }: Unresolved): string {
+export function unclear(w: Workspace, { choices, missing }: Unresolved): string {
   return [
     ...choices.map(
       (c) => `"${c.query}" could be: ${c.candidates.map((p) => `${p.name} (${p.email})`).join(", ")}.`,
@@ -114,11 +116,11 @@ function unclear(w: Workspace, { choices, missing }: Unresolved): string {
  * A review that can't be drafted until the person says who they meant. The
  * card offers the candidates; Claude asks in words.
  */
-async function needsChoice(
+export async function needsChoice(
   env: ToolEnv,
   w: Workspace,
   unresolved: Unresolved,
-  card: "delegation" | "meeting",
+  card: "delegation" | "meeting" | "outcome",
 ): Promise<CallToolResult> {
   const shown = new Set(unresolved.choices.flatMap((c) => c.candidates.map((p) => p.id)))
   const people = (await listPeople(env.ctx, w.id)).filter((p) => shown.has(p.id))
@@ -131,23 +133,106 @@ async function needsChoice(
   return okCard(`${unclear(w, unresolved)} Nothing was drafted yet.`, data, await cardView(env, w, card, people))
 }
 
-const named = (people: Resolved[]): NamedPerson[] =>
+export const named = (people: Resolved[]): NamedPerson[] =>
   people.map((p) => ({ id: p.id, name: p.name, email: p.email, understoodFrom: p.understoodFrom ?? null }))
 
-const nameList = (people: Resolved[]) =>
+export const nameList = (people: Resolved[]) =>
   people.length <= 1
     ? (people[0]?.name ?? "")
     : `${people.slice(0, -1).map((p) => p.name).join(", ")} and ${people.at(-1)!.name}`
 
 /** "(understood "Umar" as Omar Khalil)" notes, so the person can catch a wrong match. */
-const understood = (people: Resolved[]) =>
+export const understood = (people: Resolved[]) =>
   people
     .filter((p) => p.understoodFrom)
     .map((p) => `understood "${p.understoodFrom}" as ${p.name}`)
 
-const toMinutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3))
-const fromMinutes = (m: number) =>
+export const toMinutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3))
+export const fromMinutes = (m: number) =>
   `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`
+
+export type NewMeetingArgs = {
+  title: string
+  date: string
+  start_time: string
+  end_time?: string
+  duration_minutes?: number
+  attendees?: string[]
+  location?: string
+  agenda?: string
+}
+
+export type CheckedMeeting = {
+  input: MeetingInput
+  attendees: Resolved[]
+  clashes: Clash[]
+  warnings: string[]
+  past: boolean
+  timeZone: string
+}
+
+/**
+ * A new meeting as the person described it, checked: times, attendees
+ * (matched, never guessed), clashes in their calendars, and whether it's past.
+ * Shared by review_meeting and review_meeting_outcome.
+ */
+export async function checkNewMeeting(
+  env: ToolEnv,
+  w: Workspace,
+  args: NewMeetingArgs,
+): Promise<CheckedMeeting | { error: string } | { unresolved: Unresolved }> {
+  const { ctx, caller } = env
+  const start = toMinutes(args.start_time)
+  const end = args.end_time
+    ? toMinutes(args.end_time)
+    : args.duration_minutes
+      ? start + args.duration_minutes
+      : null
+  if (end === null) return { error: "Ask the person how long the meeting is, or when it ends." }
+  if (end <= start) return { error: "The meeting must end after it starts." }
+  if (end >= 24 * 60) return { error: "Meetings must end on the same day." }
+  const endTime = fromMinutes(end)
+
+  const resolved = await resolvePeople(ctx, w, args.attendees ?? [])
+  if (!("people" in resolved)) return { unresolved: resolved }
+  const attendees = resolved.people.filter((p) => p.id !== caller.userId)
+
+  // Clashes: other meetings that day that overlap and involve anyone invited (or the organiser).
+  const involved = new Set([caller.userId, ...attendees.map((p) => p.id)])
+  const [sameDay, nameOf, clock] = await Promise.all([
+    listMeetings(ctx, w.id, { from: args.date, to: args.date }),
+    namesIn(ctx, w.id),
+    workspaceClock(ctx, w.id, caller.userId),
+  ])
+  const clashes = sameDay.flatMap((m) => {
+    if (!(toMinutes(m.startTime) < end && start < toMinutes(m.endTime))) return []
+    const who = [m.organizerId, ...m.attendeeIds].filter((id) => involved.has(id))
+    return [...new Set(who)].map((id) => ({
+      personId: id,
+      person: id === caller.userId ? "You" : (nameOf(id) ?? ""),
+      meeting: m.title,
+      time: `${m.startTime}–${m.endTime}`,
+    }))
+  })
+  const warnings = [
+    ...understood(attendees),
+    ...clashes.map((c) => `${c.person} ${c.person === "You" ? "have" : "has"} "${c.meeting}" at ${c.time}`),
+  ]
+  const now = wallClock(new Date(), clock.timeZone)
+  const past = args.date < clock.today || (args.date === clock.today && args.start_time < now.time)
+  if (past) warnings.push("that time has already passed")
+
+  const input: MeetingInput = {
+    title: args.title.trim(),
+    notes: args.agenda ?? "",
+    date: args.date,
+    startTime: args.start_time,
+    endTime,
+    location: args.location?.trim() ?? "",
+    attendeeIds: attendees.map((p) => p.id),
+  }
+  return { input, attendees, clashes, warnings, past, timeZone: clock.timeZone }
+}
 
 export function registerWriteTools(server: McpServer, env: ToolEnv): void {
   const { ctx, caller, urls } = env
@@ -402,55 +487,11 @@ export function registerWriteTools(server: McpServer, env: ToolEnv): void {
     async (args) =>
       inWorkspace(env, args.workspace, async (w) => {
         if (w.role !== "administrator") return fail(notAdmin(w, "schedule meetings"), "not_admin")
-        const start = toMinutes(args.start_time)
-        const end = args.end_time
-          ? toMinutes(args.end_time)
-          : args.duration_minutes
-            ? start + args.duration_minutes
-            : null
-        if (end === null) return fail("Ask the person how long the meeting is, or when it ends.")
-        if (end <= start) return fail("The meeting must end after it starts.")
-        if (end >= 24 * 60) return fail("Meetings must end on the same day.")
-        const endTime = fromMinutes(end)
-
-        const resolved = await resolvePeople(ctx, w, args.attendees ?? [])
-        if (!("people" in resolved)) return needsChoice(env, w, resolved, "meeting")
-        const attendees = resolved.people.filter((p) => p.id !== caller.userId)
-
-        // Clashes: other meetings that day that overlap and involve anyone invited (or the organiser).
-        const involved = new Set([caller.userId, ...attendees.map((p) => p.id)])
-        const [sameDay, nameOf, clock] = await Promise.all([
-          listMeetings(ctx, w.id, { from: args.date, to: args.date }),
-          namesIn(ctx, w.id),
-          workspaceClock(ctx, w.id, caller.userId),
-        ])
-        const clashes = sameDay.flatMap((m) => {
-          if (!(toMinutes(m.startTime) < end && start < toMinutes(m.endTime))) return []
-          const who = [m.organizerId, ...m.attendeeIds].filter((id) => involved.has(id))
-          return [...new Set(who)].map((id) => ({
-            personId: id,
-            person: id === caller.userId ? "You" : (nameOf(id) ?? ""),
-            meeting: m.title,
-            time: `${m.startTime}–${m.endTime}`,
-          }))
-        })
-        const warnings = [
-          ...understood(attendees),
-          ...clashes.map((c) => `${c.person} ${c.person === "You" ? "have" : "has"} "${c.meeting}" at ${c.time}`),
-        ]
-        const now = wallClock(new Date(), clock.timeZone)
-        const past = args.date < clock.today || (args.date === clock.today && args.start_time < now.time)
-        if (past) warnings.push("that time has already passed")
-
-        const input: MeetingInput = {
-          title: args.title.trim(),
-          notes: args.agenda ?? "",
-          date: args.date,
-          startTime: args.start_time,
-          endTime,
-          location: args.location?.trim() ?? "",
-          attendeeIds: attendees.map((p) => p.id),
-        }
+        const checked = await checkNewMeeting(env, w, args)
+        if ("error" in checked) return fail(checked.error)
+        if ("unresolved" in checked) return needsChoice(env, w, checked.unresolved, "meeting")
+        const { input, attendees, clashes, warnings, past, timeZone } = checked
+        const endTime = input.endTime
         const draft = await saveDraft(ctx, { userId: caller.userId, accountId: w.id, kind: "meeting", payload: input })
 
         const withWhom = attendees.length ? ` with ${nameList(attendees)}` : ""
@@ -466,7 +507,7 @@ export function registerWriteTools(server: McpServer, env: ToolEnv): void {
           date: input.date,
           start: input.startTime,
           end: endTime,
-          timeZone: clock.timeZone,
+          timeZone,
           organizer: "you",
           attendees: named(attendees),
           location: input.location || null,

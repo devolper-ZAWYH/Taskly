@@ -289,6 +289,29 @@ label.row:hover {
   color: var(--color-text-success);
   font-size: var(--font-text-xs-size);
 }
+/* ---- Meeting outcome: parts that can be left out ---- */
+
+.parts {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.row.is-off .row-title,
+.row.is-off .row-meta {
+  color: var(--color-text-tertiary);
+  text-decoration: line-through;
+}
+.part-extra {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 4px 8px;
+  padding-inline-start: 40px;
+}
+.danger-text {
+  color: var(--color-text-danger);
+}
+
 input[type="checkbox"],
 input[type="radio"] {
   flex: none;

@@ -31,7 +31,7 @@ type Phase =
   | { name: "failed"; message: string }
 
 /** The first line of a tool's text: its summary. */
-const summaryOf = (result: ToolResult | null) => {
+export const summaryOf = (result: ToolResult | null) => {
   const first = result?.content?.[0]
   return first && first.type === "text" ? first.text.split("\n")[0] : ""
 }
@@ -71,13 +71,22 @@ export function reviewCard(c: CardContext<Review>, kind: ReviewKind): Draw {
 
   return () => {
     const data = c.data
-    if (data.status === "needs_choice") return choose(c, data, kind)
+    if (data.status === "needs_choice") {
+      return choose(c, data, {
+        kicker: `${kind === "delegation" ? c.t.newTask : c.t.newMeeting} · ${data.workspace}`,
+        review: tools.review,
+        rewrite: (input, chosen) => {
+          const said = input[tools.people]
+          return Array.isArray(said) ? { ...input, [tools.people]: said.map((q) => chosen.get(q) ?? q) } : null
+        },
+      })
+    }
     const kicker = `${kind === "delegation" ? c.t.newTask : c.t.newMeeting} · ${data.workspace}`
     const body = data.status === "ready" && "assignees" in data ? delegation(c, data) : meeting(c, data as MeetingReview)
     return h(
       "article",
       { class: "card" },
-      h("header", { class: "head" }, h("p", { class: "kicker", text: kicker }), h("h1", { class: "title", text: data.title })),
+      h("header", { class: "head" }, h("p", { class: "kicker", text: kicker }), h("h1", { class: "title" }, h("bdi", { text: data.title }))),
       phase.name === "created" ? created(c, phase.link, kind) : body,
       phase.name === "discarded" && h("p", { class: "status muted", role: "status", text: c.t.discarded }),
       phase.name === "failed" && note("danger", phase.message),
@@ -126,7 +135,7 @@ function delegation(c: CardContext<Review>, data: DelegationReview): Node {
           due.time && [", ", c.f.time(due.time)],
         ]),
       data.priority !== "none" && fact(c.t.priority, c.t.priorities[data.priority]),
-      data.meeting && fact(c.t.fromMeeting, data.meeting.title),
+      data.meeting && fact(c.t.fromMeeting, h("bdi", { text: data.meeting.title })),
     ),
     notes([...heard(c, data.assignees), ...(data.pastDue ? [c.t.pastDue] : [])]),
   )
@@ -141,9 +150,9 @@ function meeting(c: CardContext<Review>, data: MeetingReview): Node {
       "dl",
       { class: "facts" },
       fact(c.t.when, [c.f.longDate(data.date), " · ", c.f.timeRange(data.start, data.end)]),
-      data.location && fact(c.t.where, data.location),
+      data.location && fact(c.t.where, h("bdi", { text: data.location })),
       data.attendees.length > 0 && fact(c.t.who, people(data.attendees, c.view, clashing)),
-      data.agenda && fact(c.t.agenda, h("span", { class: "clamp", text: data.agenda })),
+      data.agenda && fact(c.t.agenda, h("span", { class: "clamp", dir: "auto", text: data.agenda })),
     ),
     data.clashes.length > 0 &&
       h(
@@ -188,12 +197,18 @@ function created(c: CardContext<Review>, link: string, kind: ReviewKind): Node {
   )
 }
 
-/** "Who did you mean?" for names that fit several people. */
-function choose(c: CardContext<Review>, data: NeedsChoice, kind: ReviewKind): Node {
-  const tools = TOOLS[kind]
+export type ChooseOptions = {
+  kicker: string
+  /** The review tool to run again with the person's choices. */
+  review: string
+  /** The review's arguments with each unclear name swapped for the chosen id; null if it can't be. */
+  rewrite: (input: Record<string, unknown>, chosen: Map<string, string>) => Record<string, unknown> | null
+}
+
+/** "Who did you mean?" for names that fit several people; then the review runs again. */
+export function choose<T>(c: CardContext<T | NeedsChoice>, data: NeedsChoice, options: ChooseOptions): Node {
   const chosen = new Map<string, string>()
-  const said = c.input[tools.people]
-  const canRetry = Array.isArray(said) && data.missing.length === 0
+  const canRetry = options.rewrite(c.input, chosen) !== null && data.missing.length === 0
   const status = h("p", { class: "status muted", role: "status" })
   const next = h("button", { class: "button primary", type: "button", disabled: true, text: c.t.continue })
 
@@ -201,17 +216,15 @@ function choose(c: CardContext<Review>, data: NeedsChoice, kind: ReviewKind): No
     next.setAttribute("disabled", "")
     next.textContent = c.t.checking
     status.textContent = ""
-    const names = (said as string[]).map((q) => chosen.get(q) ?? q)
-    const result = await c
-      .call(tools.review, { ...c.input, workspace: c.view.workspaceId, [tools.people]: names })
-      .catch(() => null)
+    const args = options.rewrite(c.input, chosen) ?? c.input
+    const result = await c.call(options.review, { ...args, workspace: c.view.workspaceId }).catch(() => null)
     if (!result || result.isError || !result.structuredContent) {
       status.textContent = c.problem(result)
       next.removeAttribute("disabled")
       next.textContent = c.t.continue
       return
     }
-    const review = result.structuredContent as Review & { view?: CardView }
+    const review = result.structuredContent as (T | NeedsChoice) & { view?: CardView; status: string; draft?: string }
     if (review.view) c.view = review.view
     c.data = review
     c.redraw()
@@ -224,7 +237,7 @@ function choose(c: CardContext<Review>, data: NeedsChoice, kind: ReviewKind): No
       .join("; ")
     await c.tellClaude(
       review.status === "ready"
-        ? `On the card the person said who they meant: ${picked}. New review: ${summaryOf(result)} Draft: ${review.draft}. They can press Create on the card, or confirm to you.`
+        ? `On the card the person said who they meant: ${picked}. New review: ${summaryOf(result)} Draft: ${review.draft}. They can create it from the card, or confirm to you.`
         : `On the card the person said who they meant: ${picked}. ${summaryOf(result)}`,
     )
   })
@@ -235,7 +248,7 @@ function choose(c: CardContext<Review>, data: NeedsChoice, kind: ReviewKind): No
     h(
       "header",
       { class: "head" },
-      h("p", { class: "kicker", text: `${kind === "delegation" ? c.t.newTask : c.t.newMeeting} · ${data.workspace}` }),
+      h("p", { class: "kicker", text: options.kicker }),
       h("h1", { class: "title", text: c.t.whoDidYouMean }),
     ),
     data.choices.map((choice, i) =>
@@ -268,11 +281,11 @@ function choose(c: CardContext<Review>, data: NeedsChoice, kind: ReviewKind): No
   )
 }
 
-function fact(label: string, ...value: Child[]): Node {
+export function fact(label: string, ...value: Child[]): Node {
   return h("div", { class: "fact" }, h("dt", { text: label }), h("dd", null, ...value))
 }
 
-function people(list: NamedPerson[], view: CardView, flagged = new Set<string>()): Node {
+export function people(list: NamedPerson[], view: CardView, flagged = new Set<string>()): Node {
   return h(
     "ul",
     { class: "chips" },
@@ -291,10 +304,10 @@ function people(list: NamedPerson[], view: CardView, flagged = new Set<string>()
 const heard = (c: CardContext<Review>, list: NamedPerson[]) =>
   list.filter((p) => p.understoodFrom).map((p) => c.t.heardAs(p.understoodFrom!, p.name))
 
-function notes(lines: string[]): Child {
+export function notes(lines: string[]): Child {
   return lines.length > 0 && h("div", { class: "notes" }, lines.map((line) => note("warn", line)))
 }
 
-function note(tone: "warn" | "danger", text: string): Node {
+export function note(tone: "warn" | "danger", text: string): Node {
   return h("p", { class: `note ${tone}`, role: tone === "danger" ? "alert" : null }, icon("alert"), h("span", { text }))
 }

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
+import { withChoices } from "./view/choices.ts"
 import { initials } from "./view/dom.ts"
 import { formats, splitDue } from "./view/format.ts"
 import { stringsFor } from "./view/strings.ts"
@@ -40,4 +41,29 @@ test("every error a tool can send has words in both languages", () => {
   for (const locale of ["en", "ar"] as const) {
     for (const code of codes) assert.ok(stringsFor(locale).errors[code].length > 0, `${locale}.${code}`)
   }
+})
+
+test("outcome: chosen people replace unclear names everywhere they appear", () => {
+  const chosen = new Map([["Sara", "u-sara"], ["عمر", "u-omar"]])
+  const input = {
+    workspace: "acc-acme",
+    meeting: "m-1",
+    minutes: { body: "…", readers: "people", share_with: ["Sara", "Daniel"] },
+    tasks: [
+      { title: "a", assignees: ["عمر", "Sara"] },
+      { title: "b", assignees: ["Daniel"] },
+    ],
+    my_tasks: [{ title: "c" }],
+    next_meeting: { title: "d", date: "2026-10-21", start_time: "10:00", attendees: ["Sara"] },
+  }
+  const out = withChoices(input, chosen) as typeof input
+  assert.deepEqual(out.tasks[0].assignees, ["u-omar", "u-sara"])
+  assert.deepEqual(out.tasks[1].assignees, ["Daniel"])
+  assert.deepEqual(out.minutes.share_with, ["u-sara", "Daniel"])
+  assert.deepEqual(out.next_meeting.attendees, ["u-sara"])
+  assert.deepEqual(out.my_tasks, input.my_tasks)
+  // Parts that weren't given stay absent.
+  const bare = withChoices({ meeting: "m-1", tasks: [{ title: "x", assignees: ["Sara"] }] }, chosen)
+  assert.equal(bare.next_meeting, undefined)
+  assert.equal(bare.minutes, undefined)
 })
