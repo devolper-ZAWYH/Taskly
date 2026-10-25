@@ -122,6 +122,26 @@ class _Handler(BaseHTTPRequestHandler):
             raise _Refusal(413, f"body over {limit} bytes")
         return self.rfile.read(length) if length else b""
 
+    def _discard_body(self) -> None:
+        """Read and drop the body of a request about to be refused.
+
+        Closing on an unread upload makes Windows reset the connection, so the
+        laptop would see a network error (and keep retrying) instead of the
+        refusal. Anything over the size caps is not worth reading: just close.
+        """
+        self.close_connection = True
+        try:
+            remaining = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return
+        if remaining < 0 or remaining > max(MAX_PCM_BYTES, MAX_PROMPT_BYTES):
+            return
+        while remaining > 0:
+            chunk = self.rfile.read(min(remaining, 64 * 1024))
+            if not chunk:
+                return
+            remaining -= len(chunk)
+
     def do_GET(self) -> None:  # noqa: N802 (http.server naming)
         if self.path.split("?")[0].rstrip("/") != "/v1/health":
             self._send(404, {"error": "not found"})
@@ -141,10 +161,10 @@ class _Handler(BaseHTTPRequestHandler):
         t0 = time.perf_counter()
         try:
             if route not in ("/v1/transcribe", "/v1/complete"):
-                self.close_connection = True
+                self._discard_body()
                 raise _Refusal(404, "not found")
             if not self._authorized():
-                self.close_connection = True
+                self._discard_body()
                 raise _Refusal(401, "unauthorized")
             if route == "/v1/transcribe":
                 status, payload = 200, self.app.transcribe(self._read_body(MAX_PCM_BYTES))
