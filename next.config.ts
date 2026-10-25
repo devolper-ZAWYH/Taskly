@@ -31,4 +31,11 @@ const nextConfig: NextConfig = {
 export default nextConfig
 
 // Lets `next dev` emulate Cloudflare bindings (same setup as the portfolio).
-if (!forNode) import("@opennextjs/cloudflare").then((m) => m.initOpenNextCloudflareForDev())
+// Workers AI can't run locally: its binding reaches the real Cloudflare
+// account, which needs `wrangler login`. That is opt-in (TASKLY_DEV_REMOTE_AI=1)
+// so a laptop runs Taskly with no Cloudflare account; without it only the
+// Workers AI translation and summary options fail ("needs to be run remotely").
+const remoteBindings = process.env.TASKLY_DEV_REMOTE_AI === "1"
+if (!forNode) {
+  import("@opennextjs/cloudflare").then((m) => m.initOpenNextCloudflareForDev({ remoteBindings }))
+}

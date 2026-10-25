@@ -15,6 +15,13 @@ yarn dev                # http://localhost:3100
 
 Checks: `yarn lint`, `yarn typecheck`, `yarn build`.
 
+Local development needs no Cloudflare account: the database is a local SQLite
+file under `.wrangler/`. The one binding that can't run locally is Workers AI
+(the Cloudflare translation options and the Workers AI meeting summaries). To
+use it under `yarn dev`, run `yarn wrangler login` and put
+`TASKLY_DEV_REMOTE_AI=1` in `.env.local`. Without it those options fail with
+"needs to be run remotely" and nothing else changes.
+
 ## Local sample accounts
 
 Created by `yarn db:seed:local`. The live site was seeded with

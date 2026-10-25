@@ -27,7 +27,8 @@
     }
   ],
   // Workers AI, for the Cloudflare translation options (Platform → Settings).
-  // Always remote (real Cloudflare, real usage), even under `next dev`.
+  // Always remote (real Cloudflare, real usage). Under `next dev` only with
+  // TASKLY_DEV_REMOTE_AI=1 and `wrangler login` (next.config.ts).
   "ai": {
     "binding": "AI",
     "remote": true
