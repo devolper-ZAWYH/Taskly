@@ -9,7 +9,7 @@ import { base64url } from "@/server/mcp/oauth-rules"
 
 const DRAFT_MINUTES = 15
 
-export type DraftKind = "delegation" | "meeting"
+export type DraftKind = "delegation" | "meeting" | "outcome"
 
 export async function saveDraft(
   ctx: Ctx,

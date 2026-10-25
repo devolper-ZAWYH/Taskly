@@ -7,19 +7,31 @@ import { AppError } from "@/lib/api/core"
 import type {
   GoogleContainer,
   GoogleContainerKind,
+  GoogleEventImport,
+  GoogleEventSuggestion,
   GoogleStatus,
   GoogleSyncHealth,
+  Meeting,
   PersonalEvent,
   PersonalEventInput,
   PersonalTask,
   PersonalTaskInput,
 } from "@/lib/types"
-import { requireOperator, requireUser, type Ctx } from "@/server/context"
+import { requireOperator, requireUser, requireWorkspaceAdmin, type Ctx } from "@/server/context"
 import { all, nowIso, run } from "@/server/db"
+import { calendarApi } from "@/server/google/apis"
 import { googleFor } from "@/server/google/client"
-import { googleConfigured } from "@/server/google/config"
+import { googleConfigured, googleTasksEnabled, tasksSyncFor } from "@/server/google/config"
 import { purgeUser, refreshPersonalContainers } from "@/server/google/containers"
 import { failedJobCount, retryFailedJobs, syncHealth } from "@/server/google/health"
+import {
+  addEventAsMeeting,
+  dismissEvent,
+  ownCalendar,
+  planImport,
+  runGoogleAutoAdd,
+  suggestionsFor,
+} from "@/server/google/imports"
 import * as personal from "@/server/google/personal"
 import { viaGoogle } from "@/server/google/personal"
 import { drainJobs, enqueue } from "@/server/google/queue"
@@ -34,6 +46,8 @@ export async function getGoogleStatus(ctx: Ctx): Promise<GoogleStatus> {
   const row = configured ? await getConnection(ctx.db, me.id) : null
   return {
     configured,
+    tasksEnabled: configured && (await googleTasksEnabled(ctx)),
+    tasks: Boolean(row) && (await tasksSyncFor(ctx, me.id)),
     connected: Boolean(row),
     email: row?.google_email ?? null,
     state: row?.state ?? null,
@@ -51,6 +65,13 @@ async function requireConnected(ctx: Ctx): Promise<string> {
   if (!row) throw new AppError("googleNotConnected")
   if (row.state === "revoked") throw new AppError("googleReconnect")
   return me.id
+}
+
+/** Connected, with tasks sync on and Google Tasks allowed. */
+async function requireTasks(ctx: Ctx): Promise<string> {
+  const userId = await requireConnected(ctx)
+  if (!(await tasksSyncFor(ctx, userId))) throw new AppError("googleTasksOff")
+  return userId
 }
 
 /**
@@ -148,6 +169,7 @@ const optionalId = (value: unknown) => (value === null ? null : str(value, 1024)
 export async function listPersonalTasks(ctx: Ctx, params: unknown): Promise<PersonalTask[]> {
   const userId = await requireConnected(ctx)
   if (!isObject(params)) throw new AppError("badRequest")
+  if (!(await tasksSyncFor(ctx, userId))) return []
   const showCompleted = bool(params.showCompleted)
   return viaGoogle(() => personal.listTasks(ctx, userId, showCompleted))
 }
@@ -157,7 +179,7 @@ export async function createPersonalTask(
   tasklistId: unknown,
   input: unknown,
 ): Promise<PersonalTask> {
-  const userId = await requireConnected(ctx)
+  const userId = await requireTasks(ctx)
   const value = personalTaskInput(input)
   return viaGoogle(() => personal.createTask(ctx, userId, optionalId(tasklistId), value))
 }
@@ -168,13 +190,13 @@ export async function updatePersonalTask(
   id: unknown,
   patch: unknown,
 ): Promise<PersonalTask> {
-  const userId = await requireConnected(ctx)
+  const userId = await requireTasks(ctx)
   const value = personalTaskPatch(patch)
   return viaGoogle(() => personal.updateTask(ctx, userId, listId(tasklistId), str(id, 1024), value))
 }
 
 export async function deletePersonalTask(ctx: Ctx, tasklistId: unknown, id: unknown): Promise<void> {
-  const userId = await requireConnected(ctx)
+  const userId = await requireTasks(ctx)
   return viaGoogle(() => personal.deleteTask(ctx, userId, listId(tasklistId), str(id, 1024)))
 }
 
@@ -248,4 +270,119 @@ export async function retryFailedGoogleJobs(ctx: Ctx): Promise<GoogleSyncHealth>
   await requireOperator(ctx)
   if (await retryFailedJobs(ctx)) await drainJobs(ctx, { limit: 25, budgetMs: 15_000 })
   return getGoogleSyncHealth(ctx)
+}
+
+// ---- Adding Google events to a workspace (server/google/imports.ts) --------------
+
+async function ownEvent(ctx: Ctx, userId: string, calendarId: unknown, eventId: unknown) {
+  const calendar = await ownCalendar(ctx, userId, str(calendarId, 1024))
+  const g = await googleFor(ctx, userId)
+  return viaGoogle(() => calendarApi.get(g, calendar.google_id, str(eventId, 1024)))
+}
+
+/**
+ * The meeting an administrator would get from one of their Google events (fills
+ * the form). `unmatched`: guests who aren't in the workspace, so not invited.
+ */
+export async function previewGoogleEventImport(
+  ctx: Ctx,
+  accountId: string,
+  calendarId: unknown,
+  eventId: unknown,
+): Promise<GoogleEventImport> {
+  const userId = await requireConnected(ctx)
+  await requireWorkspaceAdmin(ctx, accountId)
+  const plan = await planImport(ctx, accountId, userId, await ownEvent(ctx, userId, calendarId, eventId))
+  if (!plan) throw new AppError("googleEventNotImportable")
+  return { meeting: plan.meeting, unmatched: plan.unmatched }
+}
+
+/** Add one Google event as a meeting, with the details confirmed in the form. */
+export async function addGoogleEventToWorkspace(
+  ctx: Ctx,
+  accountId: string,
+  calendarId: unknown,
+  eventId: unknown,
+  input: unknown,
+): Promise<Meeting> {
+  const userId = await requireConnected(ctx)
+  const actor = await requireWorkspaceAdmin(ctx, accountId)
+  return addEventAsMeeting(ctx, actor, await ownEvent(ctx, userId, calendarId, eventId), input)
+}
+
+/** Their Google events with other people from this workspace, not added yet (Calendar page). */
+export async function listGoogleEventSuggestions(ctx: Ctx, accountId: string): Promise<GoogleEventSuggestion[]> {
+  const userId = await requireConnected(ctx)
+  await requireWorkspaceAdmin(ctx, accountId)
+  return viaGoogle(() => suggestionsFor(ctx, accountId, userId))
+}
+
+/** "Add" / "Add all" on suggestions: each as planned, without the form. */
+export async function addSuggestedGoogleEvents(
+  ctx: Ctx,
+  accountId: string,
+  items: unknown,
+): Promise<{ added: number; skipped: number }> {
+  const userId = await requireConnected(ctx)
+  const actor = await requireWorkspaceAdmin(ctx, accountId)
+  if (!Array.isArray(items) || items.length === 0 || items.length > 50) throw new AppError("badRequest")
+  let added = 0
+  let skipped = 0
+  for (const item of items) {
+    if (!isObject(item)) throw new AppError("badRequest")
+    const event = await ownEvent(ctx, userId, item.calendarId, item.eventId)
+    const plan = await planImport(ctx, accountId, userId, event)
+    try {
+      if (!plan) throw new AppError("googleEventNotImportable")
+      await addEventAsMeeting(ctx, actor, event, plan.meeting)
+      added++
+    } catch (error) {
+      if (!(error instanceof AppError)) throw error
+      skipped++
+    }
+  }
+  return { added, skipped }
+}
+
+/** "Not a work meeting": stop suggesting (and auto-adding) it in this workspace. */
+export async function dismissGoogleEventSuggestion(
+  ctx: Ctx,
+  accountId: string,
+  calendarId: unknown,
+  eventId: unknown,
+): Promise<void> {
+  const userId = await requireConnected(ctx)
+  await requireWorkspaceAdmin(ctx, accountId)
+  await dismissEvent(ctx, userId, accountId, await ownEvent(ctx, userId, calendarId, eventId))
+}
+
+/**
+ * Settings → Google: add this calendar's work meetings to a workspace
+ * automatically (one where they're an administrator), or stop (null).
+ * Runs once straight away, then hourly.
+ */
+export async function setGoogleCalendarAutoAdd(
+  ctx: Ctx,
+  calendarId: unknown,
+  accountId: unknown,
+): Promise<GoogleContainer[]> {
+  const userId = await requireConnected(ctx)
+  const calendar = await ownCalendar(ctx, userId, str(calendarId, 1024))
+  const target = accountId === null ? null : str(accountId, 100)
+  if (target) await requireWorkspaceAdmin(ctx, target)
+  await run(
+    ctx.db,
+    "UPDATE google_containers SET auto_account_id = ? WHERE user_id = ? AND kind = 'calendar' AND google_id = ?",
+    target,
+    userId,
+    calendar.google_id,
+  )
+  if (target) {
+    ctx.waitUntil(
+      runGoogleAutoAdd(ctx, new Date(), { userId, calendarId: calendar.google_id }).catch((error) =>
+        console.error("google auto-add failed", error),
+      ),
+    )
+  }
+  return (await containersOf(ctx.db, userId)).map(toContainer)
 }

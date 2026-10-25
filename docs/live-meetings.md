@@ -241,8 +241,9 @@ the same "not found" the rest of the app uses to hide things.
 
 | Path | What it is |
 | --- | --- |
-| `migrations/0020_live_meetings.sql` | `live_sessions`, `live_segments`, `live_device_tokens` (hashes; `account_id`; `revoked_at`) |
-| `migrations/0021_live_drafts.sql` | `live_drafts` — one unconsumed, 15-minute draft per session |
+| `migrations/0023_live_meetings.sql` | `live_sessions`, `live_segments`, `live_device_tokens` (hashes; `account_id`; `revoked_at`) |
+| `migrations/0024_live_drafts.sql` | `live_drafts` — one unconsumed draft per session (15 minutes; 7 days when the device posted it) |
+| `migrations/0025_live_segment_arabic.sql` | `live_segments.text_ar` — the Arabic line beside `text_en` |
 | `server/services/live.ts` | Auth + device endpoints + summarize/draft/accept/discard RPCs |
 | `server/live/{push,rate-limit,access,drafts,review}.ts` | Pure logic, unit-tested (`server/live/*.test.ts`); `review.ts` is the accept rule pass (visibility, assignees, task planning) |
 | `server/live/tokens.ts` | Revokes a person's device tokens when they leave a workspace, are deactivated or deleted |
@@ -267,7 +268,7 @@ runaway device; metering and per-token backpressure are Phase 5.
 ## 7. How to test locally
 
 ```sh
-yarn db:migrate:local          # applies 0020 + 0021 to the local SQLite D1
+yarn db:migrate:local          # applies 0023–0025 to the local SQLite D1
 yarn dev                        # http://localhost:3100
 # …open Settings → Live capture, create a token, copy it (shown once)…
 node scripts/replay-live.mjs --url http://localhost:3100 \

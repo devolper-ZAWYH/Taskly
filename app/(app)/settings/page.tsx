@@ -3,6 +3,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import * as React from "react"
 import { ClaudeMark } from "@/components/shell/claude-mark"
+import { GoogleLogo } from "@/components/shell/google-logo"
 import { FormError, FormRow } from "@/components/shell/form-row"
 import { PageHeader } from "@/components/shell/page-header"
 import { PasswordInput } from "@/components/shell/password-input"
@@ -144,7 +145,12 @@ export default function SettingsPage() {
         <LiveCapture />
       </Section>
 
-      <Section title={t("google.settings.title")} hint={t("google.settings.hint")}>
+      <Section
+        id="google"
+        title={t("google.settings.title")}
+        hint={t("google.settings.hint")}
+        icon={<GoogleLogo className="size-5" />}
+      >
         {/* Reads ?google=… after Google's consent screen, so it needs a Suspense boundary. */}
         <React.Suspense>
           <GoogleSettings />

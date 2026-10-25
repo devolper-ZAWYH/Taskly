@@ -7,6 +7,7 @@ import * as React from "react"
 import { PageHeader } from "@/components/shell/page-header"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
+import { toastManager } from "@/components/ui/toast"
 import { AgendaView } from "@/features/calendar/components/agenda-view"
 import {
   MeetingFormDialog,
@@ -28,11 +29,16 @@ import {
   type CalendarView,
 } from "@/features/calendar/lib/calendar-utils"
 import { ME_KEY, useCurrentUser } from "@/features/auth/use-auth"
-import { useGoogleConnected, usePersonalEvents } from "@/features/google/hooks"
+import {
+  useGoogleConnected,
+  usePersonalEvents,
+  usePreviewGoogleEventImport,
+} from "@/features/google/hooks"
 import {
   PersonalEventFormDialog,
   type PersonalEventFormState,
 } from "@/features/google/personal-event-form"
+import { GoogleEventSuggestions } from "@/features/google/event-suggestions"
 import { PersonalEventPanel } from "@/features/google/personal-event-panel"
 import { toEventSpan, toEventSpans, type EventSpan } from "@/features/google/personal-events"
 import { useWorkspace, useWorkspacePath } from "@/features/workspace/workspace-context"
@@ -70,9 +76,10 @@ function usePhoneCalendarMode(): {
 }
 
 export function CalendarPage(): React.ReactElement {
-  const { t, intl } = useLocale()
+  const { t, intl, errorMessage } = useLocale()
   const me = useCurrentUser()
-  const { viaOperator, isAdmin } = useWorkspace()
+  const { viaOperator, isAdmin, account } = useWorkspace()
+  const previewImport = usePreviewGoogleEventImport()
   const wsPath = useWorkspacePath()
   const router = useRouter()
   const pathname = usePathname()
@@ -85,6 +92,9 @@ export function CalendarPage(): React.ReactElement {
   const [pickedDay, setPickedDay] = React.useState<string | null>(null)
   const date = parseDateKey(searchParams.get("date"), new Date())
   const meetingId = searchParams.get("meeting")
+  // Links from a meeting's Google copy: open straight into writing minutes or adding a task.
+  const action = searchParams.get("action")
+  const startWith = action === "minutes" || action === "task" ? action : null
 
   const [showTasks, setShowTasks] = React.useState(true)
   const [form, setForm] = React.useState<MeetingFormState | null>(null)
@@ -216,6 +226,9 @@ export function CalendarPage(): React.ReactElement {
           ) : null
         }
       />
+
+      {/* Their Google meetings with people from this workspace, ready to add. */}
+      <GoogleEventSuggestions enabled={isAdmin && !viaOperator && googleConnected} />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
@@ -364,7 +377,9 @@ export function CalendarPage(): React.ReactElement {
 
       <MeetingPanel
         meetingId={meetingId}
-        onClose={() => setParams({ meeting: null })}
+        onClose={() => setParams({ meeting: null, action: null })}
+        startWith={startWith}
+        onStarted={() => setParams({ action: null })}
         onEdit={(meeting) => setForm({ mode: "edit", meeting })}
         onOpenTask={openTask}
       />
@@ -382,6 +397,25 @@ export function CalendarPage(): React.ReactElement {
         open={eventPanel?.open ?? false}
         onClose={() => setEventPanel((p) => (p ? { ...p, open: false } : p))}
         onEdit={(span) => setEventForm({ mode: "edit", span })}
+        addToWorkspace={
+          isAdmin
+            ? {
+                allowed: true,
+                workspaceName: account.name,
+                pending: previewImport.isPending,
+                onAdd: (span) => {
+                  const source = { calendarId: span.event.calendarId, eventId: span.event.id }
+                  previewImport.mutate(source, {
+                    onSuccess: ({ meeting, unmatched }) => {
+                      setEventPanel((p) => (p ? { ...p, open: false } : p))
+                      setForm({ mode: "create", initial: meeting, fromGoogle: { ...source, unmatched } })
+                    },
+                    onError: (error) => toastManager.add({ type: "error", title: errorMessage(error) }),
+                  })
+                },
+              }
+            : { allowed: false, workspaceName: account.name }
+        }
       />
       <PersonalEventFormDialog
         state={eventForm}

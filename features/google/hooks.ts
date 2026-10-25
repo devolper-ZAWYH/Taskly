@@ -9,17 +9,24 @@ import {
 } from "@tanstack/react-query"
 import { meetingKeys } from "@/features/calendar/hooks/use-meetings"
 import { taskKeys } from "@/features/tasks/hooks/use-tasks"
+import { useWorkspace } from "@/features/workspace/workspace-context"
 import { AppError } from "@/lib/api/core"
 import {
+  addGoogleEventToWorkspace,
+  addSuggestedGoogleEvents,
   createPersonalEvent,
   createPersonalTask,
   deletePersonalEvent,
   deletePersonalTask,
   disconnectGoogle,
+  dismissGoogleEventSuggestion,
   getGoogleStatus,
   listGoogleContainers,
+  listGoogleEventSuggestions,
   listPersonalEvents,
   listPersonalTasks,
+  previewGoogleEventImport,
+  setGoogleCalendarAutoAdd,
   setGoogleContainerSelected,
   syncGoogleNow,
   updatePersonalEvent,
@@ -29,6 +36,7 @@ import type {
   GoogleContainer,
   GoogleContainerKind,
   GoogleStatus,
+  MeetingInput,
   PersonalEventInput,
   PersonalTask,
   PersonalTaskInput,
@@ -45,6 +53,7 @@ export const googleKeys = {
   tasks: ["google", "tasks"] as const,
   taskList: (showCompleted: boolean) => ["google", "tasks", { showCompleted }] as const,
   events: ["google", "events"] as const,
+  suggestions: (accountId: string) => ["google", "suggestions", accountId] as const,
   eventRange: (from: string, to: string, timeZone: string) =>
     ["google", "events", from, to, timeZone] as const,
 }
@@ -76,6 +85,12 @@ export function isGoogleUsable(status: GoogleStatus | undefined): boolean {
 
 export function useGoogleConnected(): boolean {
   return isGoogleUsable(useGoogleStatus().data)
+}
+
+/** Connected, and their tasks sync with Google Tasks (switched on, and allowed). */
+export function useGoogleTasks(): boolean {
+  const status = useGoogleStatus().data
+  return isGoogleUsable(status) && Boolean(status?.tasks)
 }
 
 /** A refused or missing connection changes what Settings shows; re-read it. */
@@ -248,5 +263,84 @@ export function useDeletePersonalEvent() {
     mutationFn: (v: { calendarId: string; id: string }) => deletePersonalEvent(v.calendarId, v.id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: googleKeys.events }),
     onError: (error) => refreshStatusOn(queryClient, error),
+  })
+}
+
+/** What adding a Google event to the current workspace would create (fills the meeting form). */
+export function usePreviewGoogleEventImport() {
+  const { accountId } = useWorkspace()
+  return useMutation({
+    mutationFn: ({ calendarId, eventId }: { calendarId: string; eventId: string }) =>
+      previewGoogleEventImport(accountId, calendarId, eventId),
+  })
+}
+
+/** Add a Google event to the current workspace: the meeting replaces it in Taskly's calendar. */
+export function useAddGoogleEventToWorkspace() {
+  const { accountId } = useWorkspace()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ calendarId, eventId, input }: { calendarId: string; eventId: string; input: MeetingInput }) =>
+      addGoogleEventToWorkspace(accountId, calendarId, eventId, input),
+    onSuccess: () => refreshAfterAdding(queryClient, accountId),
+  })
+}
+
+/** After events became meetings: the calendar, its meetings and the suggestions change. */
+function refreshAfterAdding(queryClient: QueryClient, accountId: string) {
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: googleKeys.events }),
+    queryClient.invalidateQueries({ queryKey: googleKeys.suggestions(accountId) }),
+    queryClient.invalidateQueries({ queryKey: meetingKeys.all }),
+  ])
+}
+
+/** Google events with other people from this workspace, not added yet (administrators). */
+export function useGoogleEventSuggestions(enabled: boolean) {
+  const { accountId } = useWorkspace()
+  return useQuery({
+    queryKey: googleKeys.suggestions(accountId),
+    queryFn: () => listGoogleEventSuggestions(accountId),
+    enabled,
+    staleTime: 5 * 60_000,
+    // Reading Google can fail now and then; the banner just doesn't show.
+    retry: false,
+  })
+}
+
+export function useAddSuggestedGoogleEvents() {
+  const { accountId } = useWorkspace()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (items: { calendarId: string; eventId: string }[]) => addSuggestedGoogleEvents(accountId, items),
+    onSuccess: () => refreshAfterAdding(queryClient, accountId),
+  })
+}
+
+export function useDismissGoogleEventSuggestion() {
+  const { accountId } = useWorkspace()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ calendarId, eventId }: { calendarId: string; eventId: string }) =>
+      dismissGoogleEventSuggestion(accountId, calendarId, eventId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: googleKeys.suggestions(accountId) }),
+  })
+}
+
+/** Settings → Google: which workspace a calendar's work meetings go to automatically. */
+export function useSetGoogleCalendarAutoAdd() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ calendarId, accountId }: { calendarId: string; accountId: string | null }) =>
+      setGoogleCalendarAutoAdd(calendarId, accountId),
+    onSuccess: (containers) => {
+      queryClient.setQueryData(googleKeys.containersRefreshed, containers)
+      queryClient.setQueryData(googleKeys.containers, containers)
+      // The first run adds meetings right away.
+      setTimeout(() => {
+        void queryClient.invalidateQueries({ queryKey: googleKeys.events })
+        void queryClient.invalidateQueries({ queryKey: meetingKeys.all })
+      }, 5_000)
+    },
   })
 }

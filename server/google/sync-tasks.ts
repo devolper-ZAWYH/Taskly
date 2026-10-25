@@ -8,6 +8,7 @@ import type { Task, TaskInput } from "@/lib/types"
 import { actorFor, type Ctx } from "@/server/context"
 import { tasksApi } from "@/server/google/apis"
 import { googleFor, isGone, type Google } from "@/server/google/client"
+import { googleTasksEnabled, tasksSyncFor } from "@/server/google/config"
 import { containerGone } from "@/server/google/containers"
 import {
   footerTaskId,
@@ -37,9 +38,12 @@ const taskLink = (task: Task) => `/w/${task.accountId}/tasks?task=${task.id}`
 
 /** Bring every Google copy of this task in line: add, update, or remove. */
 export async function syncTask(ctx: Ctx, accountId: string, taskId: string): Promise<void> {
+  // Switched off in Platform → Settings: leave Google Tasks alone.
+  if (!(await googleTasksEnabled(ctx))) return
   const task = await findTask(ctx, accountId, taskId)
   const links = await linksFor(ctx.db, "task", taskId)
-  const wanted = task && taskSyncs(task) ? await connectedMembers(ctx, accountId, task.assigneeIds) : []
+  const wanted =
+    task && taskSyncs(task) ? await connectedMembers(ctx, accountId, task.assigneeIds, { tasks: true }) : []
   await eachPerson([
     ...links
       .filter((link) => !wanted.includes(link.user_id))
@@ -68,6 +72,8 @@ export async function eachPerson(work: (() => Promise<void>)[]): Promise<void> {
 }
 
 async function removeTaskCopy(ctx: Ctx, link: LinkRow): Promise<void> {
+  // They reconnected without Google Tasks: Taskly can't reach the copy, so just forget it.
+  if (!(await tasksSyncFor(ctx, link.user_id))) return deleteLink(ctx.db, link)
   try {
     const g = await googleFor(ctx, link.user_id)
     await tasksApi.delete(g, link.container_id, link.google_id)

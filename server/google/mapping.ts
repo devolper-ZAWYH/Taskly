@@ -63,6 +63,11 @@ export type GoogleEvent = {
   updated?: string
   htmlLink?: string
   organizer?: { email?: string; self?: boolean }
+  attendees?: { email?: string; self?: boolean; resource?: boolean; responseStatus?: string }[]
+  /** The same for every guest's copy of the event. */
+  iCalUID?: string
+  /** For an occurrence of a repeating event: when it was originally scheduled. */
+  originalStartTime?: GoogleEventTime
   guestsCanModify?: boolean
   /** "default", or a special kind (birthday, focusTime, outOfOffice, fromGmail, …). */
   eventType?: string
@@ -250,4 +255,63 @@ export function eventPatchBody(
     end: { ...body.end, date: null },
     recurrence: [],
   }
+}
+
+/** One task linked to a meeting, as its Google copy lists it. */
+export type ActionItem = { title: string; done: boolean; names: string[]; due: string }
+
+/**
+ * "• Title — Omar, Sara, due 2026-10-20" (done ones ticked and without a due
+ * date), at most `max` lines, then "+N more". `words.dueOn` holds `{date}` and
+ * `words.more` holds `{count}`, in the reader's language.
+ */
+export function actionItemLines(
+  items: ActionItem[],
+  words: { dueOn: string; more: string },
+  max: number,
+): string[] {
+  const lines = items.slice(0, max).map((item) => {
+    const people = item.names.length > 0 ? ` — ${item.names.join(", ")}` : ""
+    const due = item.due && !item.done ? words.dueOn.replace("{date}", item.due) : ""
+    return `${item.done ? "✓" : "•"} ${item.title}${people}${due}`
+  })
+  if (items.length > max) lines.push(words.more.replace("{count}", String(items.length - max)))
+  return lines
+}
+
+/**
+ * Which event a meeting was added from, the same in every guest's calendar and
+ * after the organiser moves it: its iCalUID, plus "#<original start>" for one
+ * occurrence of a repeating event.
+ */
+export function eventSourceKey(event: GoogleEvent): string {
+  const uid = event.iCalUID ?? event.id
+  const at = event.originalStartTime
+  if (!at && !event.recurringEventId) return uid
+  const start = at?.dateTime ? new Date(at.dateTime).toISOString() : (at?.date ?? event.start?.dateTime ?? "")
+  return `${uid}#${start}`
+}
+
+/** Whoever is reading the event said they won't go. */
+export function declinedBySelf(event: GoogleEvent): boolean {
+  return (event.attendees ?? []).some((a) => a.self && a.responseStatus === "declined")
+}
+
+/** The other people on an event (organiser and guests; not rooms, not whoever is reading it), lowercased. */
+export function eventGuestEmails(event: GoogleEvent): string[] {
+  const emails = [
+    event.organizer?.self ? undefined : event.organizer?.email,
+    ...(event.attendees ?? []).filter((a) => !a.resource && !a.self).map((a) => a.email),
+  ]
+  return [...new Set(emails.filter((e): e is string => Boolean(e)).map((e) => e.trim().toLowerCase()))]
+}
+
+/**
+ * Meeting fields for adding one event (or one occurrence of a repeating one)
+ * to a workspace. Null for Taskly's own copies of meetings (in a calendar
+ * someone subscribed to): those are meetings already.
+ */
+export function importableFields(event: GoogleEvent, zone: string): MeetingFields | null {
+  if (event.extendedProperties?.private?.tasklyMeetingId) return null
+  return eventFields({ ...event, recurrence: undefined, recurringEventId: undefined }, zone)
 }

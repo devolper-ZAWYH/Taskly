@@ -326,6 +326,10 @@ export type Dashboard = {
 export type GoogleStatus = {
   /** The server has OAuth credentials; without them there is nothing to connect. */
   configured: boolean
+  /** Tasks sync with Google Tasks on this server (Platform → Settings); meetings always sync. */
+  tasksEnabled: boolean
+  /** Tasks sync for this person: switched on, and they let Taskly into Google Tasks. */
+  tasks: boolean
   connected: boolean
   /** The connected Google account's email. */
   email: string | null
@@ -392,6 +396,8 @@ export type GoogleContainer = {
   color: string | null
   /** The person's default task list / primary calendar. */
   primary: boolean
+  /** Personal calendars: work meetings in it are added to this workspace automatically. */
+  autoAccountId: string | null
 }
 
 /** One of the person's own Google Tasks. Only they see it in Taskly. */
@@ -437,6 +443,27 @@ export type PersonalEvent = {
   htmlLink: string | null
 }
 
+/** A Google event as a workspace meeting would have it, before the person confirms. */
+export type GoogleEventImport = {
+  meeting: MeetingInput
+  /** Guests who aren't in the workspace: not invited. */
+  unmatched: string[]
+}
+
+/** A Google event with other people from the workspace, not added yet (Calendar page). */
+export type GoogleEventSuggestion = {
+  calendarId: string
+  eventId: string
+  title: string
+  date: string
+  startTime: string
+  endTime: string
+  /** Workspace people on it (they'd be invited). */
+  people: string[]
+  /** Guests who aren't in the workspace. */
+  outsiders: number
+}
+
 /** Times are wall-clock in `timeZone` (the browser's zone). */
 export type PersonalEventInput = {
   title: string
@@ -474,6 +501,8 @@ export type PlatformSettings = {
     secretSet: boolean
     /** Add this to the OAuth client's authorised redirect URIs. */
     redirectUri: string
+    /** Tasks sync with Google Tasks too; off: meetings only. */
+    tasksSync: boolean
     ready: boolean
   }
   push: { source: SettingSource; publicKey: string; ready: boolean; devices: number }
@@ -510,7 +539,7 @@ export type PlatformSettingsInput =
       from: string
       password: string
     }
-  | { group: "google"; clientId: string; clientSecret: string }
+  | { group: "google"; clientId: string; clientSecret: string; tasksSync: boolean }
   | {
       group: "translation"
       /** "" turns translation off. */

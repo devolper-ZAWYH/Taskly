@@ -16,6 +16,7 @@ import {
 import { requireUser, requireWorkspace, type Actor, type Ctx } from "@/server/context"
 import { newId } from "@/server/crypto"
 import { all, first, nowIso, toMinutes, type MinutesRow } from "@/server/db"
+import { queueGoogleSync } from "@/server/google/queue"
 import { findMeeting, VISIBLE, visibleBinds } from "@/server/services/meetings"
 import { notify } from "@/server/services/notifications"
 import { assertAssignees } from "@/server/services/tasks"
@@ -227,7 +228,13 @@ export async function createMinutes(
   }
   const minutes = (await findMinutes(ctx, actor, id))!
   await notifyShared(ctx, actor, minutes, [])
+  await refreshGoogleCopies(ctx, accountId, minutes.meetingId)
   return minutes
+}
+
+/** The meeting's Google copies link to the minutes each person may read. */
+function refreshGoogleCopies(ctx: Ctx, accountId: string, meetingId: string | null): Promise<void> {
+  return meetingId ? queueGoogleSync(ctx, "meeting", accountId, meetingId) : Promise.resolve()
 }
 
 /**
@@ -266,6 +273,7 @@ export async function updateMinutes(
   ])
   const next = (await findMinutes(ctx, actor, minutes.id))!
   await notifyShared(ctx, actor, next, minutes.visibility === "people" ? minutes.sharedWithIds : [])
+  await refreshGoogleCopies(ctx, accountId, next.meetingId)
   return next
 }
 
@@ -273,6 +281,7 @@ export async function deleteMinutes(ctx: Ctx, accountId: string, id: unknown): P
   const { actor, minutes } = await findReadable(ctx, accountId, id)
   if (!canEditMinutes(actor, minutes)) throw new AppError("forbidden")
   await ctx.db.prepare("DELETE FROM meeting_minutes WHERE id = ?").bind(minutes.id).run()
+  await refreshGoogleCopies(ctx, accountId, minutes.meetingId)
 }
 
 /** Whether a translation service is set up (shows the minutes' Translate button). */

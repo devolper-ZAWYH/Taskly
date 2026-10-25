@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
 import { toastManager } from "@/components/ui/toast"
-import { useGoogleConnected } from "@/features/google/hooks"
+import { useGoogleTasks } from "@/features/google/hooks"
 import { EMPTY_TASK, TaskFields } from "@/features/tasks/components/task-fields"
 import { useCreateTask } from "@/features/tasks/hooks/use-tasks"
 import { useViewer } from "@/features/workspace/workspace-context"
@@ -69,12 +69,12 @@ function TaskCreateForm({
   const { t, errorMessage } = useLocale()
   const createTask = useCreateTask()
   const viewer = useViewer()
-  const googleConnected = useGoogleConnected()
+  const googleTasks = useGoogleTasks()
   // Members can only create tasks for themselves.
   const canShare = canCreateSharedTask(viewer)
   const [draft, setDraft] = React.useState<TaskInput>({
     ...EMPTY_TASK,
-    googleSync: googleConnected,
+    googleSync: googleTasks,
     ...initial,
     private: canShare ? initial?.private === true : true,
   })

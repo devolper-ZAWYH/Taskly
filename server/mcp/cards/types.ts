@@ -5,7 +5,7 @@
  */
 import type { Role, TaskPriority, TaskStatus } from "@/lib/types"
 
-export type CardKind = "delegation" | "meeting" | "my_day" | "choose_meeting" | "choose_people"
+export type CardKind = "delegation" | "meeting" | "outcome" | "my_day" | "choose_meeting" | "choose_people"
 
 /** Card-only details, kept out of the text Claude reads. */
 export type CardView = {
@@ -68,6 +68,58 @@ export type MeetingReview = {
   warnings: string[]
   spokenSummary: string
   next: string
+}
+
+/** Who may read minutes, as a review shows it. */
+export type MinutesReaders =
+  | { kind: "private" }
+  | { kind: "workspace" }
+  | { kind: "people"; people: NamedPerson[] }
+
+/**
+ * Everything from one meeting in a single review: its minutes, tasks for the
+ * team, the person's own tasks, and the next meeting. Each part has a `key`;
+ * the person can leave parts out (`skip`) when creating.
+ */
+export type OutcomeReview = {
+  status: "ready"
+  draft: string
+  expiresInMinutes: number
+  workspace: string
+  meeting: { id: string; title: string; date: string }
+  minutes: { key: "minutes"; body: string; readers: MinutesReaders; replaces: boolean } | null
+  tasks: {
+    key: string
+    title: string
+    assignees: NamedPerson[]
+    due: string | null
+    pastDue: boolean
+    priority: TaskPriority
+  }[]
+  myTasks: { key: string; title: string; due: string | null; pastDue: boolean; priority: TaskPriority }[]
+  nextMeeting: {
+    key: "next_meeting"
+    title: string
+    date: string
+    start: string
+    end: string
+    timeZone: string
+    attendees: NamedPerson[]
+    location: string | null
+    agenda: string | null
+    clashes: Clash[]
+    past: boolean
+  } | null
+  warnings: string[]
+  spokenSummary: string
+  next: string
+}
+
+/** What create_meeting_outcome made, part by part. */
+export type OutcomeResult = {
+  created: { key: string; kind: "minutes" | "task" | "my_task" | "meeting"; title: string; link: string }[]
+  failed: { key: string; title: string; error: string }[]
+  skipped: string[]
 }
 
 export type DayMeeting = {
@@ -134,6 +186,7 @@ export type CardData = (
   | NeedsChoice
   | DelegationReview
   | MeetingReview
+  | OutcomeReview
   | MyDay
   | MeetingChoices
   | PeopleChoices

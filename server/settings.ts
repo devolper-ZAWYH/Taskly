@@ -29,6 +29,8 @@ export const SETTING_KEYS = {
   mail_from: { group: "mail", env: "MAIL_FROM", secret: false },
   google_client_id: { group: "google", env: "GOOGLE_CLIENT_ID", secret: false },
   google_client_secret: { group: "google", env: "GOOGLE_CLIENT_SECRET", secret: true },
+  // "on": tasks sync with Google Tasks too. Unset or anything else: meetings only.
+  google_tasks_sync: { group: "google", env: "GOOGLE_TASKS_SYNC", secret: false },
   vapid_public_key: { group: "push", env: "VAPID_PUBLIC_KEY", secret: false },
   vapid_private_key: { group: "push", env: "VAPID_PRIVATE_KEY", secret: true },
   // Which service translates Arabic ↔ English, and its credentials (server/translate).

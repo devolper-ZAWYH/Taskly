@@ -311,7 +311,7 @@ export async function updateTask(
   const current = await findTask(ctx, accountId, str(id, 100))
   if (!current || !canAccessTask(actor, current)) throw new AppError("notFound")
   const task = await applyTaskUpdate(ctx, actor, current, taskPatch(raw))
-  await queueGoogleSync(ctx, "task", accountId, task.id)
+  await queueGoogleSync(ctx, "task", accountId, task.id, { meetings: [current.meetingId] })
   return task
 }
 
@@ -438,7 +438,7 @@ export async function deleteTask(ctx: Ctx, accountId: string, id: unknown): Prom
   const task = await findTask(ctx, accountId, str(id, 100))
   if (!task || !canAccessTask(actor, task)) throw new AppError("notFound")
   await deleteTaskAs(ctx, actor, task)
-  await queueGoogleSync(ctx, "task", accountId, task.id)
+  await queueGoogleSync(ctx, "task", accountId, task.id, { meetings: [task.meetingId] })
 }
 
 /** Delete as `actor` (administrators, or a private task's owner). Callers queue the Google sync. */

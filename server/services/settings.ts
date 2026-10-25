@@ -70,6 +70,7 @@ async function view(ctx: Ctx): Promise<PlatformSettings> {
       clientId: values.google_client_id ?? "",
       secretSet: Boolean(values.google_client_secret),
       redirectUri: origin ? `${origin}/api/google/callback` : "",
+      tasksSync: values.google_tasks_sync === "on",
       ready: Boolean(values.google_client_id && values.google_client_secret && ready),
     },
     push: {
@@ -166,6 +167,7 @@ function settingsInput(value: unknown): PlatformSettingsInput {
       group,
       clientId: str(value.clientId, 300).trim(),
       clientSecret: str(value.clientSecret, 300).trim(),
+      tasksSync: bool(value.tasksSync),
     }
   }
   return {
@@ -254,7 +256,11 @@ export async function savePlatformSettings(ctx: Ctx, raw: unknown): Promise<Plat
     await saveGroup(
       ctx,
       "google",
-      { google_client_id: input.clientId, google_client_secret: secret },
+      {
+        google_client_id: input.clientId,
+        google_client_secret: secret,
+        google_tasks_sync: input.tasksSync ? "on" : "",
+      },
       me.id,
     )
     return view(ctx)

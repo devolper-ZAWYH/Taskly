@@ -149,6 +149,7 @@ function TaskEditor({ task, onClose }: { task: Task; onClose: () => void }): Rea
         {task.meetingId && statusOnly ? <MeetingOrigin meetingId={task.meetingId} /> : null}
         {/* Cancelled tasks are taken out of Google; private ones sync only if switched on. */}
         <SyncedToGoogle
+          kind="task"
           involved={
             task.assigneeIds.includes(me.id) &&
             task.status !== "cancelled" &&

@@ -2,7 +2,7 @@
  * Google OAuth 2.0 for a web server app: authorization code + PKCE, offline
  * access (a refresh token), and revocation on disconnect.
  */
-import { oauthEndpoints, SCOPES, type GoogleClient } from "@/server/google/config"
+import { oauthEndpoints, scopes, type GoogleClient } from "@/server/google/config"
 
 export type TokenResponse = {
   access_token: string
@@ -23,14 +23,21 @@ export class OAuthGrantError extends Error {
 export function consentUrl(
   env: CloudflareEnv,
   client: GoogleClient,
-  params: { redirectUri: string; state: string; challenge: string; loginHint?: string },
+  params: {
+    redirectUri: string
+    state: string
+    challenge: string
+    loginHint?: string
+    /** Also ask for Google Tasks (tasks sync is on). */
+    tasks: boolean
+  },
 ): string {
   const url = new URL(oauthEndpoints(env).auth)
   url.search = new URLSearchParams({
     client_id: client.clientId,
     redirect_uri: params.redirectUri,
     response_type: "code",
-    scope: SCOPES.join(" "),
+    scope: scopes(params.tasks).join(" "),
     access_type: "offline",
     // Always show consent so Google always returns a refresh token.
     prompt: "consent",

@@ -15,7 +15,6 @@ import { UserAvatar } from "@/components/shell/user-avatar"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useCurrentUser } from "@/features/auth/use-auth"
 import { toDateKey } from "@/features/calendar/lib/calendar-utils"
-import { ConnectClaudeCard } from "@/features/connector/connect-claude-card"
 import {
   GoogleEventGroup,
   GoogleTaskGroup,
@@ -61,7 +60,6 @@ export function DashboardPage(): React.ReactElement {
           month: "long",
         }).format(now)}
       />
-      <ConnectClaudeCard />
       {dashboard.data ? (
         <DashboardBody data={dashboard.data} isAdmin={isAdmin} />
       ) : (

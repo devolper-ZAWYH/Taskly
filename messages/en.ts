@@ -345,6 +345,13 @@ const en = {
       submit: "Create meeting",
       created: "Meeting scheduled",
     },
+    import: {
+      title: "Add to workspace",
+      description:
+        "Check the details, then add it. Taskly shows this meeting instead of the Google event; the original stays in Google Calendar.",
+      unmatched: "Not in this workspace, so not invited:",
+      added: "Added to the workspace",
+    },
     edit: {
       title: "Edit meeting",
       saved: "Meeting updated",
@@ -547,6 +554,9 @@ const en = {
         clientSecret: "Client secret",
         redirectUri: "Authorised redirect URI",
         redirectHint: "Add this in the OAuth client in Google Cloud. Set the app address first.",
+        tasksSync: "Sync tasks with Google Tasks",
+        tasksSyncHint:
+          "Off: only meetings go to Google Calendar, and Taskly doesn't ask for access to Google Tasks. People who connected while this was off reconnect Google once to add their tasks.",
         ready: "Google sync is on",
         notReady: "Google sync is off",
       },
@@ -841,19 +851,42 @@ const en = {
       attendees: "Attendees: {names}",
       open: "Open in Taskly: {url}",
       hint: "Edit above this line. Taskly writes this part.",
+      actionItems: "Action items:",
+      dueOn: ", due {date}",
+      moreItems: "+{count} more in Taskly",
+      minutesYours: "Your minutes: {url}",
+      minutesBy: "Minutes by {name}: {url}",
+      writeMinutes: "Write minutes: {url}",
+      addTask: "Add a task: {url}",
     },
     /** Google sync screens: Settings, calendar, Personal tasks, dashboard. */
     mark: "Google",
+    suggestions: {
+      banner: "Google meetings with people from {workspace}: {count}. Add them to get minutes and action items.",
+      review: "Review",
+      title: "Add Google meetings to the workspace",
+      description:
+        "These events include people from {workspace}. Each becomes a workspace meeting with minutes and action items; the originals stay in Google Calendar.",
+      outsiders: "+{count} outside the workspace",
+      notWork: "Not a work meeting",
+      addAll: "Add all ({count})",
+      addSelected: "Add {count} selected",
+      added: "Added {count} to the workspace",
+      skipped: "{count} skipped: already added, or no longer a timed meeting.",
+    },
     noTitle: "(No title)",
     synced: "Synced to Google",
     settings: {
       title: "Google",
-      hint: "Your Google Calendar and Google Tasks, kept in step with Taskly.",
+      hint: "Your Google account, kept in step with Taskly.",
       notConfigured: "Google sync isn't set up on this server.",
       intro: "Connect your Google account to keep everything in one place.",
       pointWorkspace:
         "Your workspace tasks and meetings appear in Google, in a “Taskly · workspace name” task list and calendar for each workspace.",
       pointPersonal: "Your own Google events and tasks show in Taskly. Only you can see them.",
+      pointWorkspaceCalendar:
+        "Your workspace meetings appear in Google Calendar, in a “Taskly · workspace name” calendar for each workspace.",
+      pointPersonalCalendar: "Your own Google Calendar events show in Taskly. Only you can see them.",
       pointBothWays: "Changes go both ways: edit in Taskly or in Google.",
       connect: "Connect Google",
       reconnect: "Reconnect",
@@ -868,8 +901,14 @@ const en = {
       synced: "Synced with Google",
       showHint:
         "Choose which of your own calendars and task lists show in Taskly. The “Taskly · …” ones always sync.",
+      showHintCalendar: "Choose which of your own calendars show in Taskly. The “Taskly · …” ones always sync.",
+      tasksReconnect: "Taskly can now sync your tasks with Google Tasks too. Reconnect Google and allow Google Tasks to start.",
       calendars: "Calendars",
       taskLists: "Task lists",
+      autoAdd: "Add work meetings automatically to",
+      autoAddOff: "Don't add automatically",
+      autoAddHint:
+        "Every hour, events in this calendar that include someone from the workspace become workspace meetings. The originals stay in Google.",
       primaryCalendar: "Main calendar",
       defaultList: "Default list",
       automatic: "Synced automatically",
@@ -882,7 +921,7 @@ const en = {
       callback: {
         connected: "Google connected",
         denied: "Google wasn't connected because access wasn't allowed.",
-        scopes: "Taskly needs both Google Calendar and Google Tasks. Connect again and allow both.",
+        scopes: "Taskly needs every permission it asks for. Connect again and leave them all ticked.",
         unconfigured: "Google sync isn't set up on this server.",
         failed: "Couldn't connect to Google. Please try again.",
       },
@@ -898,6 +937,10 @@ const en = {
         calendar: "Calendar",
         description: "Description",
         openInGoogle: "Open in Google Calendar",
+        addTitle: "Get minutes and action items in {workspace}",
+        addHint: "Add this event to the workspace as a meeting. The original stays in Google Calendar.",
+        addAskAdmin: "Ask an administrator to add it to the workspace as a meeting.",
+        add: "Add to workspace",
         occurrenceOnly: "Changes apply to this occurrence only.",
         readOnly: "Someone else organises this event, so it can't be changed here.",
         multiDay: "This event spans more than one day. Change it in Google Calendar.",
@@ -1040,6 +1083,18 @@ const en = {
       "It may have expired or already been used. Ask your administrator to send a new invitation.",
     toLogin: "Go to sign in",
   },
+  setupBar: {
+    label: "Set up Taskly",
+    both: "Google and Claude aren't connected yet. Connect them to get the most out of Taskly.",
+    google: "Google isn't connected yet. Connect it to see your Taskly meetings and tasks in Google Calendar and Google Tasks.",
+    googleCalendar: "Google isn't connected yet. Connect it to see your Taskly meetings in Google Calendar.",
+    googleReconnect: "Taskly can no longer reach your Google account, so syncing has stopped. Reconnect to start again.",
+    claude: "Claude isn't connected yet. Connect it to add tasks, write minutes and plan meetings by chat or voice.",
+    connectGoogle: "Connect Google",
+    reconnectGoogle: "Reconnect Google",
+    connectClaude: "Set up Claude",
+    hide: "Hide for a week",
+  },
   claude: {
     setup: {
       title: "Set up MCP",
@@ -1103,12 +1158,6 @@ const en = {
       disconnectBody:
         "{app} will lose access to your Taskly account straight away. You can connect again at any time.",
       disconnected: "Disconnected",
-    },
-    card: {
-      title: "Use Taskly in Claude",
-      body: "Add tasks, write minutes and plan meetings by chat or voice.",
-      setUp: "Set up",
-      dismiss: "Dismiss",
     },
     consent: {
       eyebrow: "Connect an app",
@@ -1243,6 +1292,10 @@ const en = {
     userNotFound: 'No user with that email. Switch to "New user" to create one.',
     googleNotConfigured: "Google sync isn't set up on the server yet.",
     googleNotConnected: "Connect your Google account in Settings first.",
+    googleTasksOff: "Google Tasks isn't synced with Taskly. Your tasks stay in Taskly.",
+    googleEventAlreadyAdded: "This event is already a meeting in this workspace.",
+    googleEventNotImportable:
+      "Only events with a start and end time on the same day can become workspace meetings.",
     googleReconnect: "Taskly lost access to your Google account. Reconnect it in Settings.",
     googleUnavailable: "Google didn't respond. Try again in a moment.",
     inviteInvalid: "This invitation link has expired or was already used.",

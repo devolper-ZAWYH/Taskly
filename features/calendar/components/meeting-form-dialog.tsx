@@ -18,7 +18,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { TimePicker } from "@/components/ui/time-picker"
 import { toastManager } from "@/components/ui/toast"
 import { useCreateMeeting, useUpdateMeeting } from "@/features/calendar/hooks/use-meetings"
-import { useGoogleConnected } from "@/features/google/hooks"
+import { useAddGoogleEventToWorkspace, useGoogleConnected } from "@/features/google/hooks"
 import {
   PersonalEventForm,
   type PersonalEventDraft,
@@ -31,7 +31,13 @@ import { useLocale } from "@/lib/i18n/locale-provider"
 import type { Meeting, PersonalEvent } from "@/lib/types"
 
 export type MeetingFormState =
-  { mode: "create"; initial: MeetingInput } | { mode: "edit"; meeting: Meeting }
+  | {
+      mode: "create"
+      initial: MeetingInput
+      /** Adding one of the person's Google events to the workspace. */
+      fromGoogle?: { calendarId: string; eventId: string; unmatched: string[] }
+    }
+  | { mode: "edit"; meeting: Meeting }
 
 export function toMeetingInput(meeting: Meeting): MeetingInput {
   const { title, notes, date, startTime, endTime, location, attendeeIds } = meeting
@@ -55,7 +61,7 @@ export function MeetingFormDialog({
     <Dialog open={Boolean(state)} onOpenChange={(open) => !open && onClose()}>
       <DialogPopup className="sm:max-w-xl">
         {/* Mounted only while open so each opening starts from its own values. */}
-        {state?.mode === "create" && connected && onSavedPersonal ? (
+        {state?.mode === "create" && !state.fromGoogle && connected && onSavedPersonal ? (
           <CreateWithWhere
             initial={state.initial}
             onClose={onClose}
@@ -156,10 +162,12 @@ function MeetingForm({
   const { account } = useWorkspace()
   const createMeeting = useCreateMeeting()
   const updateMeeting = useUpdateMeeting()
+  const addFromGoogle = useAddGoogleEventToWorkspace()
+  const fromGoogle = state.mode === "create" ? state.fromGoogle : undefined
   const [draft, setDraft] = React.useState<MeetingInput>(
     state.mode === "create" ? state.initial : toMeetingInput(state.meeting),
   )
-  const mutation = state.mode === "create" ? createMeeting : updateMeeting
+  const mutation = fromGoogle ? addFromGoogle : state.mode === "create" ? createMeeting : updateMeeting
   const set = <K extends keyof MeetingInput>(key: K, value: MeetingInput[K]) =>
     setDraft((d) => ({ ...d, [key]: value }))
 
@@ -168,11 +176,16 @@ function MeetingForm({
     const done = (meeting: Meeting) => {
       toastManager.add({
         type: "success",
-        title: state.mode === "create" ? t("meetings.create.created") : t("meetings.edit.saved"),
+        title: fromGoogle
+          ? t("meetings.import.added")
+          : state.mode === "create"
+            ? t("meetings.create.created")
+            : t("meetings.edit.saved"),
       })
       onSaved(meeting)
     }
-    if (state.mode === "create") createMeeting.mutate(draft, { onSuccess: done })
+    if (fromGoogle) addFromGoogle.mutate({ ...fromGoogle, input: draft }, { onSuccess: done })
+    else if (state.mode === "create") createMeeting.mutate(draft, { onSuccess: done })
     else updateMeeting.mutate({ id: state.meeting.id, input: draft }, { onSuccess: done })
   }
 
@@ -180,14 +193,26 @@ function MeetingForm({
     <form onSubmit={submit} className="contents">
       <DialogHeader>
         <DialogTitle className="font-display text-xl">
-          {state.mode === "create" ? t("meetings.create.title") : t("meetings.edit.title")}
+          {fromGoogle
+            ? t("meetings.import.title")
+            : state.mode === "create"
+              ? t("meetings.create.title")
+              : t("meetings.edit.title")}
         </DialogTitle>
-        {state.mode === "create" ? (
+        {fromGoogle ? (
+          <DialogDescription>{t("meetings.import.description")}</DialogDescription>
+        ) : state.mode === "create" ? (
           <DialogDescription>{t("meetings.create.description")}</DialogDescription>
         ) : null}
       </DialogHeader>
       <DialogPanel>
         <div className="flex flex-col gap-5">
+          {fromGoogle && fromGoogle.unmatched.length > 0 ? (
+            <p className="rounded-md border border-dashed px-3 py-2 text-xs text-foreground-secondary">
+              {t("meetings.import.unmatched")}{" "}
+              <span dir="ltr">{fromGoogle.unmatched.join(", ")}</span>
+            </p>
+          ) : null}
           {onSwitchToPersonal ? (
             <WhereSwitch
               value="workspace"
@@ -271,7 +296,11 @@ function MeetingForm({
           {t("common.cancel")}
         </Button>
         <Button type="submit" loading={mutation.isPending} disabled={!draft.title.trim()}>
-          {state.mode === "create" ? t("meetings.create.submit") : t("common.save")}
+          {fromGoogle
+            ? t("google.calendar.panel.add")
+            : state.mode === "create"
+              ? t("meetings.create.submit")
+              : t("common.save")}
         </Button>
       </DialogFooter>
     </form>

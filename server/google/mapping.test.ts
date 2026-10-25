@@ -2,12 +2,16 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import type { Meeting, Task } from "@/lib/types"
 import {
+  actionItemLines,
   eventFields,
-  footerTaskId,
+  eventGuestEmails,
+  eventSourceKey,
   FOOTER_MARK,
+  footerTaskId,
   googleEventBody,
   googleTaskBody,
   googleTaskFields,
+  importableFields,
   meetingFields,
   noteBody,
   statusFromDone,
@@ -130,4 +134,89 @@ test("a Google copy is traced back to its task by the footer link", () => {
   // A link above the footer is the person's own text, not Taskly's.
   assert.equal(footerTaskId("see https://x/w/acc/tasks?task=t-9"), null)
   assert.equal(footerTaskId(""), null)
+})
+
+test("action items in a meeting's Google copy", () => {
+  const words = { dueOn: ", due {date}", more: "+{count} more in Taskly" }
+  const items = [
+    { title: "Sales report", done: false, names: ["Omar", "Sara"], due: "2026-10-20" },
+    { title: "Book the room", done: false, names: [], due: "" },
+    { title: "Send agenda", done: true, names: ["Sara"], due: "2026-10-10" },
+  ]
+  assert.deepEqual(actionItemLines(items, words, 10), [
+    "• Sales report — Omar, Sara, due 2026-10-20",
+    "• Book the room",
+    "✓ Send agenda — Sara",
+  ])
+  assert.deepEqual(actionItemLines(items, words, 2), [
+    "• Sales report — Omar, Sara, due 2026-10-20",
+    "• Book the room",
+    "+1 more in Taskly",
+  ])
+  // Arabic words keep their own punctuation.
+  assert.deepEqual(actionItemLines([items[0]], { dueOn: "، الاستحقاق {date}", more: "" }, 10), [
+    "• Sales report — Omar, Sara، الاستحقاق 2026-10-20",
+  ])
+})
+
+test("an event added to a workspace is recognised in every guest's calendar", () => {
+  // The same event read from two calendars in different zones.
+  const inDoha = { id: "a1", iCalUID: "uid-1@google.com", start: { dateTime: "2026-10-14T14:30:00+03:00" } }
+  const moved = { id: "a1", iCalUID: "uid-1@google.com", start: { dateTime: "2026-10-15T09:00:00+03:00" } }
+  // The organiser moving it doesn't make it a different event.
+  assert.equal(eventSourceKey(inDoha), eventSourceKey(moved))
+  assert.equal(eventSourceKey(inDoha), "uid-1@google.com")
+  // Occurrences of a repeating event, read in different zones, keep their original start.
+  const inLondon = { id: "r_1", iCalUID: "uid-r", recurringEventId: "r", originalStartTime: { dateTime: "2026-10-14T10:00:00+01:00" } }
+  const inQatar = { id: "r_1", iCalUID: "uid-r", recurringEventId: "r", originalStartTime: { dateTime: "2026-10-14T12:00:00+03:00" } }
+  assert.equal(eventSourceKey(inLondon), eventSourceKey(inQatar))
+  // Occurrences of a repeating event share the iCalUID but not the original start.
+  const week1 = { id: "r_1", iCalUID: "uid-r", recurringEventId: "r", originalStartTime: { dateTime: "2026-10-14T09:00:00Z" } }
+  const week2 = { id: "r_2", iCalUID: "uid-r", recurringEventId: "r", originalStartTime: { dateTime: "2026-10-21T09:00:00Z" } }
+  assert.notEqual(eventSourceKey(week1), eventSourceKey(week2))
+})
+
+test("an event's people: organiser and guests, not rooms", () => {
+  assert.deepEqual(
+    eventGuestEmails({
+      id: "e",
+      organizer: { email: "Youssef@Client.com" },
+      attendees: [
+        { email: "youssef@client.com" },
+        { email: "Fouziya@Zawyh.com" },
+        { email: "room-2@resource.calendar.google.com", resource: true },
+        { email: "me@gmail.com", self: true },
+      ],
+    }),
+    ["youssef@client.com", "fouziya@zawyh.com"],
+  )
+})
+
+test("one occurrence of a repeating event can become a meeting; all-day events can't", () => {
+  const occurrence = {
+    id: "r_1",
+    summary: "Weekly sync",
+    recurringEventId: "r",
+    start: { dateTime: "2026-10-14T11:30:00Z" },
+    end: { dateTime: "2026-10-14T12:00:00Z" },
+  }
+  assert.deepEqual(importableFields(occurrence, "Asia/Qatar"), {
+    title: "Weekly sync",
+    notes: "",
+    date: "2026-10-14",
+    startTime: "14:30",
+    endTime: "15:00",
+    location: "",
+  })
+  assert.equal(importableFields({ id: "d", start: { date: "2026-10-14" }, end: { date: "2026-10-15" } }, "UTC"), null)
+})
+
+test("Taskly's own copies of meetings are never added again", () => {
+  const copy = {
+    id: "c",
+    start: { dateTime: "2026-10-14T11:30:00Z" },
+    end: { dateTime: "2026-10-14T12:00:00Z" },
+    extendedProperties: { private: { tasklyMeetingId: "m-1", tasklyAccountId: "acc-1" } },
+  }
+  assert.equal(importableFields(copy, "UTC"), null)
 })

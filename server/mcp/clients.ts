@@ -105,7 +105,8 @@ async function fetchDocument(url: string): Promise<unknown> {
   if (!fetchableHost(target.hostname)) throw new Error("host not allowed")
   if (ON_NODE) await assertPublicDns(target.hostname)
   const response = await fetch(target, {
-    redirect: "error",
+    // Workers reject redirect: "error"; a 3xx then fails the `ok` check below.
+    redirect: "manual",
     headers: { accept: "application/json" },
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   })

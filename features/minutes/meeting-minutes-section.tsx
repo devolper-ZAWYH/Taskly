@@ -15,9 +15,12 @@ import type { Meeting, PublicUser } from "@/lib/types"
 export function MeetingMinutesSection({
   meeting,
   people,
+  autoWrite = false,
 }: {
   meeting: Meeting
   people: PublicUser[] | undefined
+  /** Open the editor for new minutes once loaded, unless they already wrote some. */
+  autoWrite?: boolean
 }): React.ReactElement {
   const { t } = useLocale()
   const me = useViewer()
@@ -25,6 +28,12 @@ export function MeetingMinutesSection({
   const [editor, setEditor] = React.useState<MinutesEditorState | null>(null)
   const list = minutes.data ?? []
   const hasMine = list.some((m) => m.authorId === me.id)
+  // Arriving from "Write minutes": the editor shows until they close it.
+  const [autoClosed, setAutoClosed] = React.useState(!autoWrite)
+  const autoEditor: MinutesEditorState | null =
+    !autoClosed && minutes.isSuccess && !hasMine && canWriteMinutes(me, meeting)
+      ? { mode: "create", meeting }
+      : null
 
   return (
     <section className="flex flex-col gap-3 border-t pt-6" data-testid="meeting-minutes">
@@ -56,7 +65,13 @@ export function MeetingMinutesSection({
           {t("minutes.panel.empty")}
         </p>
       ) : null}
-      <MinutesEditorDialog state={editor} onClose={() => setEditor(null)} />
+      <MinutesEditorDialog
+        state={editor ?? autoEditor}
+        onClose={() => {
+          setEditor(null)
+          setAutoClosed(true)
+        }}
+      />
     </section>
   )
 }

@@ -1,7 +1,7 @@
 "use client"
 
 import { RefreshCwIcon } from "lucide-react"
-import { useGoogleConnected } from "@/features/google/hooks"
+import { useGoogleConnected, useGoogleTasks } from "@/features/google/hooks"
 import { useLocale } from "@/lib/i18n/locale-provider"
 
 /**
@@ -9,10 +9,17 @@ import { useLocale } from "@/lib/i18n/locale-provider"
  * is connected and the item is one Taskly copies into their Google account
  * (`involved`: they're an assignee, attendee or the organiser).
  */
-export function SyncedToGoogle({ involved }: { involved: boolean }): React.ReactElement | null {
+export function SyncedToGoogle({
+  involved,
+  kind,
+}: {
+  involved: boolean
+  kind: "task" | "meeting"
+}): React.ReactElement | null {
   const { t } = useLocale()
   const connected = useGoogleConnected()
-  if (!connected || !involved) return null
+  const tasks = useGoogleTasks()
+  if (!(kind === "task" ? tasks : connected) || !involved) return null
   return (
     <p
       className="flex items-center gap-1.5 text-xs text-foreground-muted"

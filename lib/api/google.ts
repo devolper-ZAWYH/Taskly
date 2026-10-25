@@ -2,8 +2,12 @@ import { rpc } from "@/lib/api/rpc"
 import type {
   GoogleContainer,
   GoogleContainerKind,
+  GoogleEventImport,
+  GoogleEventSuggestion,
   GoogleStatus,
   GoogleSyncHealth,
+  Meeting,
+  MeetingInput,
   PersonalEvent,
   PersonalEventInput,
   PersonalTask,
@@ -80,8 +84,40 @@ export const updatePersonalEvent = (
 export const deletePersonalEvent = (calendarId: string, id: string): Promise<void> =>
   rpc("deletePersonalEvent", calendarId, id)
 
+export const previewGoogleEventImport = (
+  accountId: string,
+  calendarId: string,
+  eventId: string,
+): Promise<GoogleEventImport> => rpc("previewGoogleEventImport", accountId, calendarId, eventId)
+
+export const addGoogleEventToWorkspace = (
+  accountId: string,
+  calendarId: string,
+  eventId: string,
+  input: MeetingInput,
+): Promise<Meeting> => rpc("addGoogleEventToWorkspace", accountId, calendarId, eventId, input)
+
 /** Operators: failing sync work and people who must reconnect. */
 export const getGoogleSyncHealth = (): Promise<GoogleSyncHealth> => rpc("getGoogleSyncHealth")
 
 /** Operators: put every failed sync job back in the queue. */
 export const retryFailedGoogleJobs = (): Promise<GoogleSyncHealth> => rpc("retryFailedGoogleJobs")
+
+export const listGoogleEventSuggestions = (accountId: string): Promise<GoogleEventSuggestion[]> =>
+  rpc("listGoogleEventSuggestions", accountId)
+
+export const addSuggestedGoogleEvents = (
+  accountId: string,
+  items: { calendarId: string; eventId: string }[],
+): Promise<{ added: number; skipped: number }> => rpc("addSuggestedGoogleEvents", accountId, items)
+
+export const dismissGoogleEventSuggestion = (
+  accountId: string,
+  calendarId: string,
+  eventId: string,
+): Promise<void> => rpc("dismissGoogleEventSuggestion", accountId, calendarId, eventId)
+
+export const setGoogleCalendarAutoAdd = (
+  calendarId: string,
+  accountId: string | null,
+): Promise<GoogleContainer[]> => rpc("setGoogleCalendarAutoAdd", calendarId, accountId)

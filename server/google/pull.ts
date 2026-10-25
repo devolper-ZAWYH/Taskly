@@ -7,6 +7,7 @@ import type { Ctx } from "@/server/context"
 import { first, nowIso, run } from "@/server/db"
 import { calendarApi, tasksApi } from "@/server/google/apis"
 import { GoogleError, googleFor } from "@/server/google/client"
+import { tasksSyncFor } from "@/server/google/config"
 import { containerGone } from "@/server/google/containers"
 import type { GoogleEvent, GoogleTask } from "@/server/google/mapping"
 import { queueGoogleSync } from "@/server/google/queue"
@@ -34,8 +35,11 @@ export async function pullContainer(ctx: Ctx, userId: string, ref: string): Prom
     googleId,
   )
   if (!container) return
-  if (container.kind === "tasklist") await pullTasklist(ctx, container)
-  else await pullCalendar(ctx, container)
+  if (container.kind === "tasklist") {
+    // Tasks sync switched off, or they connected without Google Tasks.
+    if (!(await tasksSyncFor(ctx, userId))) return
+    await pullTasklist(ctx, container)
+  } else await pullCalendar(ctx, container)
   await touchSynced(ctx.db, userId)
 }
 

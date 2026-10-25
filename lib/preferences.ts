@@ -22,21 +22,24 @@ export function setLastWorkspaceId(userId: string, id: string): void {
   }
 }
 
-const CLAUDE_CARD_KEY = "tasks:claude-card-dismissed"
+/** "Hide for now" on the setup bar: per person, for a week. */
+const setupBarKey = (userId: string) => `tasks:setup-bar-hidden:${userId}`
+const SETUP_BAR_HIDE_MS = 7 * 24 * 60 * 60 * 1000
 
-/** The dashboard's "Use Taskly in Claude" card was dismissed on this browser. */
-export function getClaudeCardDismissed(): boolean {
+/** The setup bar's suggestions were hidden on this browser less than a week ago. */
+export function getSetupBarHidden(userId: string): boolean {
   try {
-    return localStorage.getItem(CLAUDE_CARD_KEY) === "1"
+    const until = Number(localStorage.getItem(setupBarKey(userId)))
+    return Number.isFinite(until) && until > Date.now()
   } catch {
     return false
   }
 }
 
-export function setClaudeCardDismissed(): void {
+export function hideSetupBar(userId: string): void {
   try {
-    localStorage.setItem(CLAUDE_CARD_KEY, "1")
+    localStorage.setItem(setupBarKey(userId), String(Date.now() + SETUP_BAR_HIDE_MS))
   } catch {
-    // Storage unavailable: the card comes back next visit.
+    // Storage unavailable: the bar comes back next visit.
   }
 }

@@ -15,6 +15,7 @@ import type { CardContext, Draw, ToolResult } from "./context"
 import { h } from "./dom"
 import { formats } from "./format"
 import { myDayCard } from "./my-day"
+import { outcomeCard } from "./outcome"
 import { meetingPicker, peoplePicker } from "./pickers"
 import { reviewCard } from "./review"
 import { stringsFor, type Strings } from "./strings"
@@ -101,6 +102,9 @@ function show(result: ToolResult) {
     case "delegation":
     case "meeting":
       draw = reviewCard(context(data as never, view), view.card)
+      break
+    case "outcome":
+      draw = outcomeCard(context(data as never, view))
       break
     case "my_day":
       draw = myDayCard(context(data as never, view))

@@ -11,7 +11,7 @@ import { all } from "@/server/db"
 import { calendarApi, tasksApi } from "@/server/google/apis"
 import { GoogleError, googleFor, isGone, type Google } from "@/server/google/client"
 import { refreshPersonalContainers } from "@/server/google/containers"
-import type { GoogleEvent, GoogleTask } from "@/server/google/mapping"
+import { eventSourceKey, type GoogleEvent, type GoogleTask } from "@/server/google/mapping"
 import { personalContainer, type ContainerRow } from "@/server/google/store"
 
 /**
@@ -225,14 +225,39 @@ export async function listEvents(
         })
         return items
           .filter((event) => event.status !== "cancelled")
-          .map((event) => toPersonalEvent(event, calendar))
+          .map((event) => ({ event: toPersonalEvent(event, calendar), source: eventSourceKey(event) }))
       } catch (error) {
         if (isGone(error)) return []
         throw error
       }
     }),
   )
-  return results.flat().sort((a, b) => a.start.localeCompare(b.start))
+  const found = results.flat()
+  // Events added to a workspace show as that meeting instead.
+  const added = await addedAsMeetings(ctx, userId, found.map((item) => item.source))
+  return found
+    .filter((item) => !added.has(item.source))
+    .map((item) => item.event)
+    .sort((a, b) => a.start.localeCompare(b.start))
+}
+
+/** Which of these events became meetings this person can see (canViewMeeting) in an active workspace. */
+async function addedAsMeetings(ctx: Ctx, userId: string, sources: string[]): Promise<Set<string>> {
+  if (sources.length === 0) return new Set()
+  const rows = await all<{ google_source: string }>(
+    ctx.db,
+    `SELECT DISTINCT m.google_source FROM meetings m
+     JOIN memberships ms ON ms.account_id = m.account_id AND ms.user_id = ?
+     JOIN accounts a ON a.id = m.account_id AND a.active = 1
+     WHERE m.google_source IN (SELECT value FROM json_each(?))
+       AND (ms.role = 'administrator' OR m.organizer_id = ?
+         OR EXISTS (SELECT 1 FROM meeting_attendees ma WHERE ma.meeting_id = m.id AND ma.user_id = ?))`,
+    userId,
+    JSON.stringify([...new Set(sources)]),
+    userId,
+    userId,
+  )
+  return new Set(rows.map((row) => row.google_source))
 }
 
 function eventBody(input: PersonalEventInput) {

@@ -4,7 +4,7 @@ import { MapPinIcon } from "lucide-react"
 import Link from "next/link"
 import * as React from "react"
 import { eventBarStyle, GoogleMark } from "@/features/google/google-mark"
-import { useGoogleConnected, usePersonalEvents, usePersonalTasks } from "@/features/google/hooks"
+import { useGoogleConnected, useGoogleTasks, usePersonalEvents, usePersonalTasks } from "@/features/google/hooks"
 import {
   spanSortKey,
   spansOn,
@@ -30,19 +30,20 @@ import { cn } from "@/lib/utils"
  */
 export function useGoogleToday(today: string): { tasks: PersonalTask[]; events: EventSpan[] } {
   const connected = useGoogleConnected()
-  const tasks = usePersonalTasks(false, connected)
+  const withTasks = useGoogleTasks()
+  const tasks = usePersonalTasks(false, withTasks)
   const events = usePersonalEvents({ from: today, to: today }, connected)
   return React.useMemo(() => {
     if (!connected) return { tasks: [], events: [] }
     return {
-      tasks: (tasks.data ?? [])
+      tasks: (withTasks ? (tasks.data ?? []) : [])
         .filter((task) => !task.completed && task.dueDate !== "" && task.dueDate <= today)
         .sort((a, b) => a.dueDate.localeCompare(b.dueDate)),
       events: spansOn(toEventSpans(events.data ?? []), today).sort((a, b) =>
         spanSortKey(a, today).localeCompare(spanSortKey(b, today)),
       ),
     }
-  }, [connected, tasks.data, events.data, today])
+  }, [connected, withTasks, tasks.data, events.data, today])
 }
 
 /** Group heading in the dashboard's lists, marked as Google. */

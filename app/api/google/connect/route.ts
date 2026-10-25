@@ -1,7 +1,7 @@
 import { cookies } from "next/headers"
 import { currentUser } from "@/server/context"
 import { newSessionToken } from "@/server/crypto"
-import { googleClient, OAUTH_COOKIE } from "@/server/google/config"
+import { googleClient, googleTasksEnabled, OAUTH_COOKIE } from "@/server/google/config"
 import { consentUrl } from "@/server/google/oauth"
 import { getConnection } from "@/server/google/store"
 import { pkcePair } from "@/server/google/tokens"
@@ -39,6 +39,7 @@ export async function GET(request: Request) {
       state,
       challenge,
       loginHint: previous?.google_email,
+      tasks: await googleTasksEnabled(ctx),
     }),
   )
 }
