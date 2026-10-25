@@ -16,6 +16,7 @@ import { GoogleSettings } from "@/features/google/google-settings"
 import { NotificationSettings } from "@/features/notifications/notification-settings"
 import { EmailAddresses } from "@/features/settings/email-addresses"
 import { InstallApp } from "@/features/settings/install-app"
+import { LiveCapture } from "@/features/settings/live-capture"
 import { ShareApp } from "@/features/settings/share-app"
 import { AvatarField } from "@/features/users/components/avatar-field"
 import { PEOPLE_KEY } from "@/features/tasks/hooks/use-tasks"
@@ -137,6 +138,10 @@ export default function SettingsPage() {
 
       <Section title={t("settings.emails.title")} hint={t("settings.emails.hint")}>
         <EmailAddresses />
+      </Section>
+
+      <Section title={t("live.settingsTitle")} hint={t("live.settingsHint")}>
+        <LiveCapture />
       </Section>
 
       <Section title={t("google.settings.title")} hint={t("google.settings.hint")}>

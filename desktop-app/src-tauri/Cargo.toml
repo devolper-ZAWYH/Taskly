@@ -1,0 +1,23 @@
+[package]
+name = "taskly-shell"
+version = "0.1.0"
+description = "Taskly desktop shell — Tauri v2 wrapper around the existing Taskly web UI"
+edition = "2021"
+
+# tauri_build::build() compiles tauri.conf.json, the capabilities JSON and the
+# bundle icons (tauri.conf.json > bundle > icon) into the binary at build time.
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# `tray-icon` enables the Rust-side tray/menu API (no JavaScript involved).
+tauri = { version = "2", features = ["tray-icon"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Desktop-only plugins. The single-instance one carries the `deep-link`
+# feature so a `taskly://` link clicked while the app is already running is
+# forwarded to the running instance instead of starting a second one.
+[target."cfg(any(windows, target_os = \"linux\", target_os = \"macos\"))".dependencies]
+tauri-plugin-deep-link = "2"
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }

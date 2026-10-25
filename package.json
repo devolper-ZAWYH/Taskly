@@ -12,7 +12,7 @@
     "lint": "eslint",
     "typecheck": "node scripts/build-cards.mjs && tsc --noEmit",
     "cards": "node scripts/build-cards.mjs",
-    "test": "node --test server/google/*.test.ts server/mail/*.test.ts server/translate/*.test.ts server/mcp/*.test.ts server/mcp/cards/*.test.ts",
+    "test": "node --experimental-transform-types --import ./scripts/test-aliases.mjs --test server/google/*.test.ts server/mail/*.test.ts server/translate/*.test.ts server/mcp/*.test.ts server/mcp/cards/*.test.ts server/live/*.test.ts server/summarize/*.test.ts",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",

@@ -10,7 +10,7 @@ export const savePlatformSettings = (input: PlatformSettingsInput): Promise<Plat
 
 /** Drop a group's saved values so the server environment applies again. */
 export const resetPlatformSettings = (
-  group: "app" | "mail" | "google" | "push" | "translation",
+  group: "app" | "mail" | "google" | "push" | "translation" | "live",
 ): Promise<PlatformSettings> => rpc("resetPlatformSettings", group)
 
 /** Emails the signed-in operator; `error` is the mail server's answer when it fails. */
@@ -24,6 +24,13 @@ export const testTranslation = (): Promise<{
   toEnglish: string
   error: string | null
 }> => rpc("testTranslation")
+
+/** Summarize a fixed sample transcript with the current summarizer service. */
+export const testLiveSummary = (): Promise<{
+  ok: boolean
+  summary: string
+  error: string | null
+}> => rpc("testLiveSummary")
 
 /** New push key pair (existing push subscriptions stop working). */
 export const generatePushKeys = (): Promise<PlatformSettings> => rpc("generatePushKeys")

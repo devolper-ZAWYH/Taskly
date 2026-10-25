@@ -27,6 +27,11 @@ interface __BaseEnv_CloudflareEnv {
 	TRANSLATE_REGION: string;
 	TRANSLATE_MODEL: string;
 	TRANSLATE_API_ORIGIN: string;
+	LIVE_SUMMARY_PROVIDER: string;
+	LIVE_SUMMARY_KEY: string;
+	LIVE_SUMMARY_BASE_URL: string;
+	LIVE_SUMMARY_MODEL: string;
+	SUMMARIZE_API_ORIGIN: string;
 	WORKER_SELF_REFERENCE: Service<typeof import("./custom-worker").default>;
 }
 declare namespace Cloudflare {
@@ -40,7 +45,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "VAPID_PUBLIC_KEY" | "VAPID_SUBJECT" | "NEXTJS_ENV" | "APP_ORIGIN" | "VAPID_PRIVATE_KEY" | "GOOGLE_CLIENT_ID" | "GOOGLE_CLIENT_SECRET" | "ENCRYPTION_KEY" | "GOOGLE_API_ORIGIN" | "GOOGLE_OAUTH_ORIGIN" | "SMTP_HOST" | "SMTP_PORT" | "SMTP_SECURE" | "SMTP_USER" | "SMTP_PASS" | "MAIL_FROM" | "TRANSLATE_PROVIDER" | "TRANSLATE_KEY" | "TRANSLATE_KEY_ID" | "TRANSLATE_REGION" | "TRANSLATE_MODEL" | "TRANSLATE_API_ORIGIN">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "VAPID_PUBLIC_KEY" | "VAPID_SUBJECT" | "NEXTJS_ENV" | "APP_ORIGIN" | "VAPID_PRIVATE_KEY" | "GOOGLE_CLIENT_ID" | "GOOGLE_CLIENT_SECRET" | "ENCRYPTION_KEY" | "GOOGLE_API_ORIGIN" | "GOOGLE_OAUTH_ORIGIN" | "SMTP_HOST" | "SMTP_PORT" | "SMTP_SECURE" | "SMTP_USER" | "SMTP_PASS" | "MAIL_FROM" | "TRANSLATE_PROVIDER" | "TRANSLATE_KEY" | "TRANSLATE_KEY_ID" | "TRANSLATE_REGION" | "TRANSLATE_MODEL" | "TRANSLATE_API_ORIGIN" | "LIVE_SUMMARY_PROVIDER" | "LIVE_SUMMARY_KEY" | "LIVE_SUMMARY_BASE_URL" | "LIVE_SUMMARY_MODEL" | "SUMMARIZE_API_ORIGIN">> {}
 }
 
 // Begin runtime types

@@ -6,6 +6,7 @@ import {
   KeyRoundIcon,
   LanguagesIcon,
   MailIcon,
+  SparklesIcon,
   TriangleAlertIcon,
 } from "lucide-react"
 import * as React from "react"
@@ -27,14 +28,21 @@ import {
   useResetPlatformSettings,
   useSavePlatformSettings,
   useSendTestEmail,
+  useTestLiveSummary,
   useTestTranslation,
 } from "@/features/platform/hooks/use-platform"
 import { useLocale } from "@/lib/i18n/locale-provider"
+import {
+  SUMMARY_PROVIDER_SPECS,
+  SUMMARY_PROVIDERS,
+  type SummaryProvider,
+  type SummaryProviderSpec,
+} from "@/lib/summarize"
 import { PROVIDER_SPECS, TRANSLATION_PROVIDERS, type TranslationProvider } from "@/lib/translation"
 import type { PlatformSettings, SettingSource } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
-type Group = "app" | "mail" | "google" | "push" | "translation"
+type Group = "app" | "mail" | "google" | "push" | "translation" | "live"
 
 /** Platform → Settings: the deployment's address, email, Google client and push keys. */
 export function PlatformSettingsPage(): React.ReactElement {
@@ -75,6 +83,10 @@ export function PlatformSettingsPage(): React.ReactElement {
           <PushSection settings={settings.data} />
           <TranslationSection
             key={`translation:${JSON.stringify(settings.data.translation)}`}
+            settings={settings.data}
+          />
+          <LiveSummariesSection
+            key={`live:${JSON.stringify(settings.data.live)}`}
             settings={settings.data}
           />
         </>
@@ -651,6 +663,172 @@ function TranslationSection({ settings }: { settings: PlatformSettings }): React
           ) : (
             <FormError
               message={t("platform.settings.translation.testFailed", { error: test.data.error ?? "" })}
+            />
+          )
+        ) : null}
+      </form>
+    </Section>
+  )
+}
+
+/**
+ * Live meetings' summaries (docs/live-meetings.md §6): where the review draft
+ * is made after a capture — the default keeps it on the recording device, and
+ * a service here drafts it on the server instead (liveSummarize).
+ */
+function LiveSummariesSection({ settings }: { settings: PlatformSettings }): React.ReactElement {
+  const { t, errorMessage } = useLocale()
+  const save = useSavePlatformSettings()
+  const test = useTestLiveSummary()
+  const saved = useSaved()
+  const current = settings.live
+  const [provider, setProvider] = React.useState(current.provider)
+  const [key, setKey] = React.useState("")
+  const [baseUrl, setBaseUrl] = React.useState(current.baseUrl)
+  const [model, setModel] = React.useState(current.model)
+  const spec: SummaryProviderSpec | null =
+    provider ? SUMMARY_PROVIDER_SPECS[provider as SummaryProvider] : null
+  // A saved key only carries over while the same service stays selected.
+  const keySaved = current.keySet && provider === current.provider
+  const label = (p: string) =>
+    p
+      ? t(`platform.settings.live.providers.${p as SummaryProvider}`)
+      : t("platform.settings.live.off")
+
+  return (
+    <Section
+      title={t("platform.settings.live.title")}
+      hint={t("platform.settings.live.hint")}
+      group="live"
+      source={current.source}
+      status={{
+        ready: current.ready,
+        label: current.ready
+          ? t("platform.settings.live.ready")
+          : t("platform.settings.live.notReady"),
+      }}
+    >
+      <form
+        className="flex flex-col gap-4"
+        onSubmit={(e) => {
+          e.preventDefault()
+          save.mutate(
+            {
+              group: "live",
+              provider: provider === "on_device" ? "" : provider,
+              key,
+              baseUrl,
+              model,
+            },
+            { onSuccess: saved },
+          )
+        }}
+      >
+        <FormRow label={t("platform.settings.live.provider")} htmlFor="live-provider">
+          <Select
+            value={provider || "on_device"}
+            onValueChange={(value) => {
+              const next = !value || value === "on_device" ? "" : value
+              setProvider(next)
+              setKey("")
+              setBaseUrl(next === current.provider ? current.baseUrl : "")
+              setModel(next === current.provider ? current.model : "")
+            }}
+          >
+            <SelectTrigger id="live-provider" data-testid="live-provider">
+              <span className="truncate">
+                {provider
+                  ? t(`platform.settings.live.providers.${provider as SummaryProvider}`)
+                  : t("platform.settings.live.off")}
+              </span>
+            </SelectTrigger>
+            <SelectContent>
+              {SUMMARY_PROVIDERS.map((p) => (
+                <SelectItem key={p} value={p}>
+                  {label(p)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FormRow>
+        <p className="-mt-2 text-xs text-foreground-muted">
+          {t(`platform.settings.live.notes.${(provider || "on_device") as SummaryProvider}`)}
+        </p>
+
+        {spec?.key ? (
+          <FormRow
+            label={t("platform.settings.live.key")}
+            htmlFor="live-key"
+            hint={keySaved ? t("platform.settings.keepSecret") : undefined}
+          >
+            <PasswordInput id="live-key" value={key} onChange={setKey} autoComplete="off" />
+          </FormRow>
+        ) : null}
+        {spec?.baseUrl ? (
+          <FormRow
+            label={t("platform.settings.live.baseUrl")}
+            htmlFor="live-base-url"
+            hint={t("platform.settings.live.baseUrlHint")}
+          >
+            <Input
+              id="live-base-url"
+              dir="ltr"
+              inputMode="url"
+              placeholder="https://api.example.com"
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+            />
+          </FormRow>
+        ) : null}
+        {provider ? (
+          <FormRow
+            label={t("platform.settings.live.model")}
+            htmlFor="live-model"
+            hint={t("platform.settings.live.modelHint")}
+          >
+            <Input
+              id="live-model"
+              dir="ltr"
+              autoComplete="off"
+              placeholder={spec?.model ?? "my-model-123"}
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+            />
+          </FormRow>
+        ) : null}
+
+        <FormError message={save.error ? errorMessage(save.error) : null} />
+        {/* Save stays available on "On the device": it is how a service is switched off. */}
+        <div className="flex flex-wrap gap-2">
+          <Button type="submit" loading={save.isPending}>
+            {t("platform.settings.save")}
+          </Button>
+          {provider ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!current.ready}
+              loading={test.isPending}
+              onClick={() =>
+                test.mutate(undefined, {
+                  onError: (error) => toastManager.add({ type: "error", title: errorMessage(error) }),
+                })
+              }
+            >
+              <SparklesIcon />
+              {t("platform.settings.live.test")}
+            </Button>
+          ) : null}
+        </div>
+        {provider && test.data ? (
+          test.data.ok ? (
+            <div className="flex flex-col gap-2 rounded-md border p-3 text-sm" data-testid="live-summary-test">
+              <p className="text-xs font-medium text-success">{t("platform.settings.live.testOk")}</p>
+              <p dir="auto">{test.data.summary}</p>
+            </div>
+          ) : (
+            <FormError
+              message={t("platform.settings.live.testFailed", { error: test.data.error ?? "" })}
             />
           )
         ) : null}

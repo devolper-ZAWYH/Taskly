@@ -1,0 +1,14 @@
+# Build outputs (never commit)
+src-tauri/target/
+src-tauri/gen/
+node_modules/
+
+# Generated icon files — regenerate with:
+#   cargo tauri icon src-tauri/icons/source/app-icon-1024.png
+# (kept out of VCS on purpose; only icons/source/ lives in the tree)
+src-tauri/icons/*.png
+src-tauri/icons/*.ico
+src-tauri/icons/*.icns
+
+# Settings artifacts that could appear during local runs
+desktop-app.local/

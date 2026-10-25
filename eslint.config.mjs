@@ -20,6 +20,9 @@ const eslintConfig = defineConfig([
     "cpanel-build/**",
     // Claude's card page, built by scripts/build-cards.mjs:
     "server/mcp/cards/card-html.generated.ts",
+    // The desktop recorder (Python) and its Tauri shell have their own tooling:
+    "desktop-engine/**",
+    "desktop-app/**",
   ]),
 ]);
 

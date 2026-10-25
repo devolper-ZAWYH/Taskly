@@ -9,6 +9,7 @@ import {
   resetPlatformSettings,
   savePlatformSettings,
   sendTestEmail,
+  testLiveSummary,
   testTranslation,
 } from "@/lib/api/platform-settings"
 import {
@@ -179,4 +180,8 @@ export function useSendTestEmail() {
 
 export function useTestTranslation() {
   return useMutation({ mutationFn: testTranslation })
+}
+
+export function useTestLiveSummary() {
+  return useMutation({ mutationFn: testLiveSummary })
 }

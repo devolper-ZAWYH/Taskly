@@ -1,0 +1,9 @@
+# Taskly Live engine on a meeting laptop that uses the PC's model server
+# (`--server` / TASKLY_MODEL_SERVER): capture, VAD, journal and push run
+# here; transcription, translation and the summary run on the PC. No
+# faster-whisper / ctranslate2 / CUDA needed.
+#   python -m venv .venv && .venv/bin/pip install -r requirements-laptop.txt
+numpy==2.5.4
+requests==2.34.2
+sounddevice==0.5.6
+PyAudioWPatch==0.2.12.9; sys_platform == "win32"

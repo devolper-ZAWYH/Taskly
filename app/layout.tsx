@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next"
 import { Cairo, JetBrains_Mono, Plus_Jakarta_Sans } from "next/font/google"
 import { cookies } from "next/headers"
 import { Providers } from "@/app/providers"
-import { LOCALE_COOKIE } from "@/lib/i18n/locale-provider"
+import { LOCALE_COOKIE } from "@/lib/i18n/locale-cookie"
 import type { Locale } from "@/lib/types"
 import "./globals.css"
 

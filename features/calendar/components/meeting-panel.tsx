@@ -29,6 +29,7 @@ import {
   useMeetingTasks,
 } from "@/features/calendar/hooks/use-meetings"
 import { SyncedToGoogle } from "@/features/google/synced-marker"
+import { LiveTranscriptSection } from "@/features/live/live-transcript-section"
 import { MeetingMinutesSection } from "@/features/minutes/meeting-minutes-section"
 import { AssigneeStack } from "@/features/tasks/components/assignees"
 import { StatusBadge } from "@/features/tasks/components/task-badges"
@@ -37,6 +38,7 @@ import { TaskCreateDialog } from "@/features/tasks/components/task-create-dialog
 import { usePeople } from "@/features/tasks/hooks/use-tasks"
 import { useViewer } from "@/features/workspace/workspace-context"
 import { canEditMeeting } from "@/lib/api/meetings"
+import { SessionReviewCard } from "@/features/live/session-review-card"
 import { useLocale } from "@/lib/i18n/locale-provider"
 import type { FieldTranslation, Meeting, Task } from "@/lib/types"
 
@@ -208,6 +210,10 @@ function MeetingDetail({
               </>
             ) : null}
           </section>
+
+          <LiveTranscriptSection meeting={meeting} />
+
+          <SessionReviewCard meeting={meeting} />
 
           <MeetingMinutesSection meeting={meeting} people={people} />
 

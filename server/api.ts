@@ -7,6 +7,7 @@ import * as dashboard from "@/server/services/dashboard"
 import * as emails from "@/server/services/emails"
 import * as connector from "@/server/services/connector"
 import * as google from "@/server/services/google"
+import * as live from "@/server/services/live"
 import * as meetings from "@/server/services/meetings"
 import * as minutes from "@/server/services/minutes"
 import * as notifications from "@/server/services/notifications"
@@ -59,6 +60,16 @@ export const api = {
   deleteMinutes: minutes.deleteMinutes,
   translateMinutes: minutes.translateMinutes,
   getTranslationAvailable: minutes.getTranslationAvailable,
+
+  liveSessions: live.liveSessions,
+  liveTranscript: live.liveTranscript,
+  createLiveDeviceToken: live.createLiveDeviceToken,
+  liveDeviceTokens: live.liveDeviceTokens,
+  deleteLiveDeviceToken: live.deleteLiveDeviceToken,
+  liveSummarize: live.liveSummarize,
+  liveDraft: live.liveDraft,
+  liveAccept: live.liveAccept,
+  liveDiscard: live.liveDiscard,
 
   listPeople: members.listPeople,
   listMembers: members.listMembers,
@@ -133,6 +144,7 @@ export const api = {
   sendTestEmail: settings.sendTestEmail,
   generatePushKeys: settings.generatePushKeys,
   testTranslation: settings.testTranslation,
+  testLiveSummary: settings.testLiveSummary,
 }
 
 export type Api = typeof api

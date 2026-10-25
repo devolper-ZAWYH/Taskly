@@ -14,7 +14,7 @@ import type { Ctx } from "@/server/context"
 import { all } from "@/server/db"
 import { decryptToken, encryptToken } from "@/server/google/tokens"
 
-export const SETTING_GROUPS = ["app", "mail", "google", "push", "translation"] as const
+export const SETTING_GROUPS = ["app", "mail", "google", "push", "translation", "live"] as const
 export type SettingGroup = (typeof SETTING_GROUPS)[number]
 export type SettingSource = "console" | "environment" | "unset"
 
@@ -37,6 +37,11 @@ export const SETTING_KEYS = {
   translate_key_id: { group: "translation", env: "TRANSLATE_KEY_ID", secret: false },
   translate_region: { group: "translation", env: "TRANSLATE_REGION", secret: false },
   translate_model: { group: "translation", env: "TRANSLATE_MODEL", secret: false },
+  // Which service summarizes a live meeting's transcript (server/summarize).
+  live_summary_provider: { group: "live", env: "LIVE_SUMMARY_PROVIDER", secret: false },
+  live_summary_key: { group: "live", env: "LIVE_SUMMARY_KEY", secret: true },
+  live_summary_base_url: { group: "live", env: "LIVE_SUMMARY_BASE_URL", secret: false },
+  live_summary_model: { group: "live", env: "LIVE_SUMMARY_MODEL", secret: false },
 } as const satisfies Record<string, { group: SettingGroup; env: keyof CloudflareEnv; secret: boolean }>
 
 export type SettingKey = keyof typeof SETTING_KEYS

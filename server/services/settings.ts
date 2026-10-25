@@ -5,6 +5,12 @@
  */
 import { AppError } from "@/lib/api/core"
 import {
+  SUMMARY_PROVIDER_SPECS,
+  SUMMARY_PROVIDERS,
+  summaryProviderReady,
+  type SummaryProvider,
+} from "@/lib/summarize"
+import {
   PROVIDER_SPECS,
   providerReady,
   TRANSLATION_PROVIDERS,
@@ -24,7 +30,10 @@ import {
   SETTING_GROUPS,
   settingsOf,
   type SettingGroup,
+  type SettingSource,
 } from "@/server/settings"
+import { SAMPLE_TRANSCRIPT, parseSummaryDraft, summaryPrompt } from "@/server/summarize/prompt"
+import { summarizerFor } from "@/server/summarize/providers"
 import { translatorFor } from "@/server/translate/providers"
 import { translateText } from "@/server/translate/text"
 import { assertEmail, bool, int, isObject, oneOf, str } from "@/server/validate"
@@ -82,6 +91,29 @@ async function view(ctx: Ctx): Promise<PlatformSettings> {
         region: values.translate_region,
       }),
     },
+    live: liveView(values, sources.live),
+  }
+}
+
+/** The live-meetings summary settings (Platform → Settings; server/summarize). */
+function liveView(
+  values: Record<string, string | undefined>,
+  source: SettingSource,
+): PlatformSettings["live"] {
+  // "" reads as the default `on_device`: the engine posts its own draft.
+  const provider = (values.live_summary_provider || "on_device") as SummaryProvider
+  return {
+    source,
+    provider: provider === "on_device" ? "" : provider,
+    keySet: Boolean(values.live_summary_key),
+    baseUrl: values.live_summary_base_url ?? "",
+    model: values.live_summary_model ?? "",
+    // "Ready" means the server summarizes; on the device it never does.
+    ready: provider !== "on_device" && summaryProviderReady(provider, {
+      key: values.live_summary_key,
+      baseUrl: values.live_summary_base_url,
+      model: values.live_summary_model || SUMMARY_PROVIDER_SPECS[provider]?.model || "",
+    }),
   }
 }
 
@@ -100,7 +132,7 @@ function originOf(value: unknown): string {
 
 function settingsInput(value: unknown): PlatformSettingsInput {
   if (!isObject(value)) throw new AppError("badRequest")
-  const group = oneOf(value.group, ["app", "mail", "google", "translation"] as const)
+  const group = oneOf(value.group, ["app", "mail", "google", "translation", "live"] as const)
   if (group === "app") return { group, origin: originOf(value.origin) }
   if (group === "translation") {
     const provider = str(value.provider, 40)
@@ -114,6 +146,19 @@ function settingsInput(value: unknown): PlatformSettingsInput {
       keyId: str(value.keyId, 200).trim(),
       region: str(value.region, 60).trim(),
       model: str(value.model, 200).trim(),
+    }
+  }
+  if (group === "live") {
+    const provider = str(value.provider, 40)
+    if (provider && !(SUMMARY_PROVIDERS as readonly string[]).includes(provider)) {
+      throw new AppError("badRequest")
+    }
+    return {
+      group,
+      provider,
+      key: str(value.key, 500).trim(),
+      baseUrl: str(value.baseUrl, 300).trim(),
+      model: str(value.model, 100).trim(),
     }
   }
   if (group === "google") {
@@ -167,6 +212,34 @@ export async function savePlatformSettings(ctx: Ctx, raw: unknown): Promise<Plat
         ...(spec.keyId ? { translate_key_id: input.keyId } : {}),
         ...(spec.region ? { translate_region: input.region } : {}),
         ...(spec.model ? { translate_model: input.model || spec.model } : {}),
+      },
+      me.id,
+    )
+    return view(ctx)
+  }
+  if (input.group === "live") {
+    if (!input.provider) {
+      // Summaries stay on the device; the environment's choice is overridden off.
+      await saveGroup(ctx, "live", { live_summary_provider: "on_device" }, me.id)
+      return view(ctx)
+    }
+    const spec = SUMMARY_PROVIDER_SPECS[input.provider as SummaryProvider]
+    // An empty key keeps the one in use, if it was for this same provider.
+    const key =
+      input.key || (current.live_summary_provider === input.provider ? (current.live_summary_key ?? "") : "")
+    if (spec.key && !key) throw new AppError("secretRequired")
+    if (spec.baseUrl && !input.baseUrl) throw new AppError("badRequest")
+    // A service with no model default (OpenAI-compatible endpoints) needs one.
+    if (!spec.model && !input.model) throw new AppError("badRequest")
+    if (spec.key && !encryptionKey(ctx.env)) throw new AppError("encryptionKeyMissing")
+    await saveGroup(
+      ctx,
+      "live",
+      {
+        live_summary_provider: input.provider,
+        ...(spec.key ? { live_summary_key: key } : {}),
+        ...(spec.baseUrl ? { live_summary_base_url: input.baseUrl } : {}),
+        live_summary_model: input.model || spec.model || "",
       },
       me.id,
     )
@@ -288,6 +361,31 @@ export async function testTranslation(
       ok: false,
       toArabic: "",
       toEnglish: "",
+      error: error instanceof Error ? error.message : String(error),
+    }
+  }
+}
+
+/**
+ * Summarize a fixed sample transcript with the current live-meetings settings,
+ * so the operator sees it works (and how the minutes would read) before
+ * relying on it. The sample is built-in text, never a real meeting.
+ */
+export async function testLiveSummary(
+  ctx: Ctx,
+): Promise<{ ok: boolean; summary: string; error: string | null }> {
+  await requireOperator(ctx)
+  const summarizer = await summarizerFor(ctx)
+  if (!summarizer) throw new AppError("summarizerUnavailable")
+  try {
+    const prompt = summaryPrompt(SAMPLE_TRANSCRIPT)
+    const payload = parseSummaryDraft(await summarizer.complete(prompt.system, prompt.user))
+    return { ok: true, summary: payload.sections.summary, error: null }
+  } catch (error) {
+    // The service's own report, or the parser's — never any meeting content.
+    return {
+      ok: false,
+      summary: "",
       error: error instanceof Error ? error.message : String(error),
     }
   }

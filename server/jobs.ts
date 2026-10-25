@@ -31,8 +31,22 @@ export async function runJobs(ctx: Ctx, kind: JobKind, at: Date): Promise<string
     const synced = await runGoogleSync(ctx, at)
     // Translations that failed earlier (or never got their after-save run).
     const translated = await drainTranslations(ctx, { limit: 50 })
-    return `google sync: ${synced} jobs; translations: ${translated} ran`
+    // Live review drafts expire 15 minutes after the summarizer saved them
+    // (server/live/drafts.ts); lazily swept on save too, this keeps the table
+    // empty when nobody comes back to review them.
+    const drafts = await sweepExpiredLiveDrafts(ctx)
+    return `google sync: ${synced} jobs; translations: ${translated} ran; live drafts: ${drafts} swept`
   }
   const sent = await runDueReminders(ctx, at)
   return `due date reminders: ${sent} sent`
+}
+
+/** Drop the failed drafts: expired, nobody reviewed them (Phase 3 housekeeping). */
+async function sweepExpiredLiveDrafts(ctx: Ctx): Promise<number> {
+  const now = new Date().toISOString()
+  const result = await ctx.db
+    .prepare("DELETE FROM live_drafts WHERE expires_at < ?")
+    .bind(now)
+    .run()
+  return result.meta.changes ?? 0
 }

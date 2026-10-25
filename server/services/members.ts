@@ -21,6 +21,7 @@ import {
 import { hashPassword, newId, newSessionToken, newTemporaryPassword } from "@/server/crypto"
 import { userByEmail } from "@/server/emails"
 import { enqueue } from "@/server/google/queue"
+import { revokeLiveTokensStatement } from "@/server/live/tokens"
 import { mailConfigured, sendMail } from "@/server/mail/send"
 import { workspaceInviteMail } from "@/server/mail/templates"
 import { sendInvitation, workspaceInviter } from "@/server/services/password-links"
@@ -474,10 +475,11 @@ export async function removeMember(ctx: Ctx, accountId: string, userId: unknown)
   const actor = await requireWorkspaceAdmin(ctx, accountId)
   const id = str(userId, 100)
   if (id === actor.id) throw new AppError("selfRemove")
-  await ctx.db
-    .prepare("DELETE FROM memberships WHERE account_id = ? AND user_id = ?")
-    .bind(accountId, id)
-    .run()
+  await ctx.db.batch([
+    ctx.db.prepare("DELETE FROM memberships WHERE account_id = ? AND user_id = ?").bind(accountId, id),
+    // Their recording devices for this workspace stop for good.
+    revokeLiveTokensStatement(ctx.db, id, accountId),
+  ])
   // Their copy of this workspace leaves their Google account too.
   await enqueue(ctx, [{ kind: "purge_member", userId: id, accountId }])
 }

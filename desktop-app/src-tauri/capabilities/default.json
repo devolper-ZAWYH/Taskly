@@ -1,0 +1,10 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Least-privilege defaults for the Taskly desktop shell. Core window controls apply to the main window only. The embedded Taskly web app is remote content and deliberately receives no IPC access; the tray, its menu and window close-to-tray behaviour are handled entirely in Rust, so no core:tray:* / core:menu:* permissions are listed here (those only gate JavaScript-driven tray APIs, which the shell does not use).",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-set-title"
+  ]
+}

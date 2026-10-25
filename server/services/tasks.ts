@@ -207,17 +207,45 @@ export async function createTask(ctx: Ctx, accountId: string, raw: unknown): Pro
 }
 
 /**
+ * The write-through of a live review's accepted action item (docs/
+ * live-meetings.md §4): a task the recorder authors, assigned only within the
+ * accept-time rules (`server/live/review.ts` — administrators assign anyone;
+ * a member's item is theirs, as a workspace task or, when it names nobody they
+ * may assign, as their private task). Unlike "createTask" there is no
+ * administrator gate and never a Google sync: the task's author always exists
+ * in the workspace and the app's own assignee/meeting checks below still run.
+ */
+export async function createLiveActionTask(ctx: Ctx, actor: Actor, raw: TaskInput): Promise<Task> {
+  const accountId = actor.account.id
+  const isPrivate = raw.private === true
+  const task = await insertTask(ctx, actor, {
+    ...raw,
+    // A private task's only assignee is its creator, as in createTaskAs.
+    assigneeIds: isPrivate ? [actor.id] : raw.assigneeIds,
+    private: isPrivate,
+    googleSync: false,
+  })
+  await queueGoogleSync(ctx, "task", accountId, task.id)
+  return task
+}
+
+/**
  * Create a task as `actor`: from the app, or from their Google task list.
  * Workspace tasks need an administrator; a private task is anyone's, with its
  * creator as its only assignee. Callers queue the Google sync.
  */
 export async function createTaskAs(ctx: Ctx, actor: Actor, raw: TaskInput): Promise<Task> {
-  const accountId = actor.account.id
   const isPrivate = raw.private === true
   if (!isPrivate && !canCreateSharedTask(actor)) throw new AppError("forbidden")
   const input: TaskInput = isPrivate
     ? { ...raw, assigneeIds: [actor.id], googleSync: raw.googleSync === true }
     : { ...raw, googleSync: false }
+  return insertTask(ctx, actor, input)
+}
+
+/** The task-creation core once permission is settled (title, checks, insert, notify). */
+async function insertTask(ctx: Ctx, actor: Actor, input: TaskInput): Promise<Task> {
+  const accountId = actor.account.id
   const title = input.title.trim()
   if (!title) throw new AppError("titleRequired")
   await assertAssignees(ctx, accountId, input.assigneeIds)
@@ -253,7 +281,7 @@ export async function createTaskAs(ctx: Ctx, actor: Actor, raw: TaskInput): Prom
         input.dueTime,
         actor.id,
         input.meetingId ?? null,
-        isPrivate ? 1 : 0,
+        input.private ? 1 : 0,
         input.googleSync ? 1 : 0,
         input.status === "completed" ? now : null,
         now,

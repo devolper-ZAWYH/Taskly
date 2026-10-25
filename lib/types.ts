@@ -487,6 +487,15 @@ export type PlatformSettings = {
     model: string
     ready: boolean
   }
+  live: {
+    source: SettingSource
+    /** "" reads as the default `on_device` (the engine writes its own draft). */
+    provider: string
+    keySet: boolean
+    baseUrl: string
+    model: string
+    ready: boolean
+  }
 }
 
 /** One group to save. An empty secret keeps the current one. */
@@ -511,6 +520,14 @@ export type PlatformSettingsInput =
       region: string
       model: string
     }
+  | {
+      group: "live"
+      /** The summary provider; the default is `on_device` (the engine's own). */
+      provider: string
+      key: string
+      baseUrl: string
+      model: string
+    }
 
 /** The signed-in person's email addresses (Settings → Email addresses). */
 export type MyEmails = {
@@ -520,6 +537,118 @@ export type MyEmails = {
   /** Each workspace they belong to and the address it knows them by. */
   workspaces: { accountId: string; name: string; email: string }[]
 }
+
+// ---- Live meetings ---------------------------------------------------------
+
+/** Who spoke: the device's microphone ("Me") or the meeting app's loopback ("Them"). */
+export const LIVE_SOURCES = ["mic", "system"] as const
+export type LiveSource = (typeof LIVE_SOURCES)[number]
+
+/** A recording's lifecycle: capturing → reviewing → (review card, later phase) done. */
+export const LIVE_SESSION_STATUSES = ["capturing", "reviewing", "done", "aborted"] as const
+export type LiveSessionStatus = (typeof LIVE_SESSION_STATUSES)[number]
+
+/** One recording on a meeting (or ad-hoc), by one person. */
+export type LiveSession = {
+  id: string
+  accountId: string
+  /** Null when the device couldn't claim a meeting, with its title/date snapshots. */
+  meetingId: string | null
+  meetingTitle: string
+  meetingDate: string
+  /** The recorder. Reads by others follow the meeting's visibility rules. */
+  recorderId: string
+  status: LiveSessionStatus
+  startedAt: string
+  endedAt: string | null
+  lastSeenAt: string | null
+}
+
+/** One segment: what one person said, as spoken and (from the device) in English and Arabic. */
+export type LiveSegment = {
+  id: string
+  sessionId: string
+  /** 1, 2, 3… per session; the idempotent push key and the read cursor. */
+  seq: number
+  source: LiveSource
+  /** As spoken (e.g. "ar", "en"), when the device knows. */
+  lang: string | null
+  text: string
+  textEn: string | null
+  /** The Arabic line; null from engines that only translate into English. */
+  textAr: string | null
+  /** Milliseconds from the session start, as the device clocked them. */
+  startedAtMs: number | null
+  endedAtMs: number | null
+  createdAt: string
+}
+
+/** A transcript read: the session plus the segments beyond the cursor. */
+export type LiveTranscript = { session: LiveSession; segments: LiveSegment[] }
+
+/** A device token as Settings shows it; the raw token itself is never stored. */
+export type LiveDeviceToken = {
+  id: string
+  name: string
+  accountId: string
+  /** The workspace's name (tokens are per user and workspace). */
+  workspace: string
+  lastUsed: string
+  createdAt: string
+}
+
+/** The raw token, returned exactly once at creation. */
+export type LiveDeviceTokenSecret = { token: string; device: LiveDeviceToken }
+
+/** One proposed action item of a live draft (camelCase; the wire sends `action_items`). */
+export type LiveDraftActionItem = {
+  title: string
+  /**
+   * A person's name as the summarizer heard it. Never trusted as a member:
+   * matched on accept (`server/mcp/match.ts`), and an unclear name creates the
+   * task unassigned with the name in its description instead.
+   */
+  assignee?: string
+  /** `YYYY-MM-DD`, unset (or "") when there is none. */
+  due?: string
+}
+
+/** The review draft's fixed sections (docs/live-meetings.md §5), camelCase. */
+export type LiveDraftPayload = {
+  sections: {
+    summary: string
+    decisions: string[]
+    followUps: string[]
+  }
+  actionItems: LiveDraftActionItem[]
+}
+
+/** A review draft as the card reads it: live for 15 minutes, single-use. */
+export type LiveDraft = {
+  id: string
+  sessionId: string
+  /** ISO time after which the draft refuses to be consumed. */
+  expiresAt: string
+  sections: LiveDraftPayload["sections"]
+  actionItems: LiveDraftActionItem[]
+}
+
+/** `liveAccept`: what the review card sends. `items` runs in the draft's item order. */
+export type LiveAcceptInput = {
+  sessionId: string
+  /** The draft the card shows; a newer one in between answers `liveDraftGone`. */
+  draftId?: string
+  visibility: MinutesVisibility
+  /** With `people`: the readers (active members, the minutes rule). */
+  sharedWithIds?: string[]
+  /** A line the reviewer adds to the end of the minutes' body. */
+  note?: string
+  /** Assignee/due edits from the card; `assigneeId` is a member id, `null` clears. */
+  items?: { assigneeId?: string | null; due?: string | null }[]
+}
+
+/** What `liveAccept` created. */
+export type LiveAcceptResult = { minutes: MeetingMinutes; tasks: Task[] }
 
 // ---- Claude connector ------------------------------------------------------
 

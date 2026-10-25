@@ -2,11 +2,10 @@
 
 import * as React from "react"
 import { AppError } from "@/lib/api/core"
+import { LOCALE_COOKIE } from "@/lib/i18n/locale-cookie"
 import type { Locale } from "@/lib/types"
 import ar from "@/messages/ar"
 import en, { type Messages } from "@/messages/en"
-
-export const LOCALE_COOKIE = "tasks-locale"
 
 const DICTIONARIES: Record<Locale, Messages> = { en, ar }
 

@@ -167,6 +167,7 @@ printed once.
   one-time link valid for 1 hour (at most one email a minute). The answer is
   the same whether or not the address has an account. Choosing a new password
   signs the person out of every other session.
+- **Live meetings (beta)**: a desktop engine on the meeting laptops (Windows, macOS or Linux) turns the meeting's audio into Arabic↔English lines and pushes them to Taskly, optionally handing the speech work to a GPU PC (the model server); a finished session's review draft becomes minutes and action-item tasks once accepted. See [desktop-engine/README.md](desktop-engine/README.md) and [docs/live-meetings.md](docs/live-meetings.md).
 
 ## Notifications and reminders
 

@@ -28,6 +28,7 @@ import {
 import { emailTaken } from "@/server/emails"
 import { enqueue, queueMeetingResync } from "@/server/google/queue"
 import { looksLikeImage } from "@/server/images"
+import { revokeLiveTokensStatement } from "@/server/live/tokens"
 import { revokeAllGrants } from "@/server/mcp/grants"
 import { mailConfigured } from "@/server/mail/send"
 import { membersOf } from "@/server/services/members"
@@ -341,8 +342,13 @@ export async function updateUser(ctx: Ctx, id: unknown, input: unknown): Promise
       .bind(next.name, next.email, next.active ? 1 : 0, next.isOperator ? 1 : 0, userId),
     // If the new primary was one of their other addresses, it isn't "other" any more.
     ctx.db.prepare("DELETE FROM user_emails WHERE user_id = ? AND email = ?").bind(userId, next.email),
-    // Deactivation signs the person out everywhere.
-    ...(next.active ? [] : [ctx.db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(userId)]),
+    // Deactivation signs the person out everywhere, recording devices included.
+    ...(next.active
+      ? []
+      : [
+          ctx.db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(userId),
+          revokeLiveTokensStatement(ctx.db, userId),
+        ]),
   ])
   // …disconnects their Google account (removing the workspace copies there),
   // and ends their Claude connections.
@@ -386,6 +392,7 @@ export async function deleteUser(ctx: Ctx, id: unknown): Promise<void> {
   await ctx.db.batch([
     ctx.db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(userId),
     ctx.db.prepare("DELETE FROM memberships WHERE user_id = ?").bind(userId),
+    revokeLiveTokensStatement(ctx.db, userId),
     ctx.db.prepare("DELETE FROM user_emails WHERE user_id = ?").bind(userId),
     ctx.db.prepare("DELETE FROM task_assignees WHERE user_id = ?").bind(userId),
     ctx.db.prepare("DELETE FROM meeting_attendees WHERE user_id = ?").bind(userId),
@@ -475,6 +482,7 @@ export async function detachUser(ctx: Ctx, membershipId: unknown): Promise<void>
   )
   await run(ctx.db, "DELETE FROM memberships WHERE id = ?", id)
   if (membership) {
+    await revokeLiveTokensStatement(ctx.db, membership.user_id, membership.account_id).run()
     await enqueue(ctx, [
       { kind: "purge_member", userId: membership.user_id, accountId: membership.account_id },
     ])

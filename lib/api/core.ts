@@ -54,6 +54,11 @@ export type ErrorCode =
   | "connectorUnavailable"
   | "oauthInvalidClient"
   | "oauthInvalidRedirect"
+  | "liveSessionNotFound"
+  | "liveDraftGone"
+  | "summarizerUnavailable"
+  | "summaryOnDevice"
+  | "summarizeFailed"
 
 /** Error whose `code` maps to a translated message (`errors.<code>`). */
 export class AppError extends Error {
