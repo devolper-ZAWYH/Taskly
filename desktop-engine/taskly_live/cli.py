@@ -77,7 +77,7 @@ def _maybe_mock(cfg, mock: bool) -> LiveClient:
     return LiveClient(server.url, MOCK_TOKEN, batch_limit=cfg.batch_limit)
 
 
-def _build_stt(cfg: Config, *, default_translator: str = "off"):
+def _build_stt(cfg: Config, *, default_translator: str = "off", keep_looking: bool = False):
     """The PC's model server when one is configured, else local Whisper.
 
     Local decoding imports faster-whisper only here, so a laptop that uses
@@ -93,16 +93,21 @@ def _build_stt(cfg: Config, *, default_translator: str = "off"):
                      health.get("stt"), health.get("translator"))
         return stt
     from .stt import SttPipeline
-    from .translate import build_translator
+    from .translate import AutoTranslator, build_translator
 
+    kind = cfg.translator or default_translator
+    if kind == "auto" and keep_looking:
+        # A server runs for weeks: keep re-checking until the first choice is up.
+        translator = AutoTranslator(cfg.ollama_url, cfg.translate_model, cfg.models_dir)
+    else:
+        translator = build_translator(kind, ollama_url=cfg.ollama_url,
+                                      ollama_model=cfg.translate_model,
+                                      models_dir=cfg.models_dir)
     return SttPipeline(
         cfg.model,
         download_root=cfg.models_dir,
         language=cfg.language,
-        translator=build_translator(cfg.translator or default_translator,
-                                    ollama_url=cfg.ollama_url,
-                                    ollama_model=cfg.translate_model,
-                                    models_dir=cfg.models_dir),
+        translator=translator,
     )
 
 
@@ -340,18 +345,91 @@ def cmd_summarize(args: argparse.Namespace, cfg: Config) -> int:
     return 0
 
 
+def _wait_for_ollama(url: str, seconds: float) -> bool:
+    """At boot Ollama may come up after us: give it a while before the
+    translator is picked (AutoTranslator keeps looking afterwards anyway)."""
+    import requests
+
+    deadline = time.monotonic() + max(0.0, seconds)
+    while True:
+        try:
+            requests.get(f"{url}/api/version", timeout=2.0)
+            return True
+        except requests.RequestException:
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(2.0)
+
+
+def cmd_serve_keys(args: argparse.Namespace, cfg: Config) -> int:
+    """`serve keys add|list|revoke`: one key per platform."""
+    from .server import open_key_store
+
+    store = open_key_store(cfg.data_dir)
+    try:
+        if args.keys_cmd == "add":
+            try:
+                raw = store.add(args.name, concurrency=args.concurrency)
+            except ValueError as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return 2
+            print(f"key for {args.name!r} (shown once; store it in that platform's secrets):")
+            print(f"    {raw}")
+            return 0
+        if args.keys_cmd == "revoke":
+            if not store.revoke(args.name):
+                print(f"error: no active key named {args.name!r}", file=sys.stderr)
+                return 2
+            print(f"revoked {args.name!r}: requests with it now get 401")
+            return 0
+        rows = store.list()
+        if not rows:
+            print("no keys yet: `python -m taskly_live serve keys add <name>`")
+        for k in rows:
+            state = f"revoked {k.revoked[:10]}" if k.revoked else "active"
+            print(f"{k.name:24s} {state:18s} created {k.created[:10]}  "
+                  f"last used {(k.last_used or '-')[:16]:16s}  "
+                  f"{k.usage.requests} req, {k.usage.audio_seconds / 60:.1f} audio min, "
+                  f"{k.usage.prompt_tokens + k.usage.completion_tokens} tokens"
+                  + (f", concurrency {k.concurrency}" if k.concurrency else ""))
+        return 0
+    finally:
+        store.close()
+
+
 def cmd_serve(args: argparse.Namespace, cfg: Config) -> int:
-    """The GPU PC's model server (server.py) until Ctrl-C."""
+    """The GPU PC's model server (server.py) until Ctrl-C or the service stops."""
     from .config import DEFAULT_SERVE_MODEL
-    from .server import KEY_FILENAME, ModelServer, load_or_create_key, setup_lines
+    from .server import ModelServer, open_key_store, setup_lines
     from .summarize import OllamaSummarizer
 
-    key, made_now = load_or_create_key(cfg.data_dir, rotate=bool(args.new_key))
+    if getattr(args, "keys_cmd", None):
+        return cmd_serve_keys(args, cfg)
+    if args.new_key:
+        print("--new-key is gone: give each platform its own key with "
+              "`serve keys add <name>` and retire one with `serve keys revoke <name>`.",
+              file=sys.stderr)
+        return 2
+    keys = open_key_store(cfg.data_dir)
+    if not any(k.active for k in keys.list()):
+        raw = keys.add("default")
+        print("no keys yet; made one named 'default' (shown once):")
+        print(f"    {raw}")
     cfg.server = ""  # the server decodes itself, whatever the environment says
     if not cfg.model_from_user:
         cfg.model = DEFAULT_SERVE_MODEL
-    print(f"loading {cfg.model} (first run downloads it into {cfg.models_dir})...")
-    stt = _build_stt(cfg, default_translator="auto")
+    if not _wait_for_ollama(cfg.ollama_url, args.wait_ollama):
+        print(f"warning: Ollama isn't answering at {cfg.ollama_url} after "
+              f"{args.wait_ollama:.0f}s; starting without it (translation and chat "
+              "recover when it does)", flush=True)
+    print(f"loading {cfg.model} (first run downloads it into {cfg.models_dir})...", flush=True)
+    stt = _build_stt(cfg, default_translator="auto", keep_looking=True)
+    if args.require_gpu and stt.device != "cuda":
+        # Under a service manager: exit so it restarts us once CUDA is ready,
+        # rather than serving every platform from the CPU for weeks.
+        print(f"error: --require-gpu, but Whisper loaded on {stt.device}; exiting",
+              file=sys.stderr, flush=True)
+        return 3
     translator = getattr(stt, "translator", None)
     shared = getattr(translator, "model", None) == cfg.summary_model
     if shared:
@@ -368,9 +446,12 @@ def cmd_serve(args: argparse.Namespace, cfg: Config) -> int:
                   "out untranslated until it does")
     summarizer = OllamaSummarizer(cfg.ollama_url, cfg.summary_model,
                                   keep_alive=-1 if shared else None)
+    chat_models = [m.strip() for m in (args.chat_models or "").split(",") if m.strip()]
     try:
-        server = ModelServer(stt, summarizer, key, host=args.host, port=args.port,
-                             stt_slots=args.stt_slots).start()
+        server = ModelServer(stt, summarizer, keys, host=args.host, port=args.port,
+                             stt_slots=args.stt_slots, llm_slots=args.llm_slots,
+                             per_key=args.per_key, max_queue=args.max_queue,
+                             ollama_url=cfg.ollama_url, chat_models=chat_models or None).start()
     except OSError as exc:
         print(f"error: cannot listen on {args.host}:{args.port}: {exc}", file=sys.stderr)
         return 2
@@ -378,9 +459,13 @@ def cmd_serve(args: argparse.Namespace, cfg: Config) -> int:
     print(f"  stt        : {stt.model_name} on {stt.device} ({stt.compute_type})")
     print(f"  translator : {translator.name if translator else 'whisper (X -> English only)'}")
     print(f"  summaries  : {summarizer.name} at {cfg.ollama_url}")
-    for line in setup_lines(server.port, key, made_now, cfg.data_dir / KEY_FILENAME):
+    print(f"  chat       : {', '.join(server.chat_allowlist) or 'none'} "
+          f"(available now: {', '.join(server.chat_models()) or 'none'})")
+    print(f"  queues     : speech {args.stt_slots} slot(s), llm {args.llm_slots}; "
+          f"{args.per_key} per key; {args.max_queue} waiting at most")
+    for line in setup_lines(server.port, keys):
         print(line)
-    print("Ctrl-C to stop.", flush=True)  # a log file (Task Scheduler) sees it now
+    print("Ctrl-C to stop.", flush=True)  # a log file (service) sees it now
     try:
         while True:
             time.sleep(3600)
@@ -388,6 +473,7 @@ def cmd_serve(args: argparse.Namespace, cfg: Config) -> int:
         pass
     finally:
         server.stop()
+        keys.close()
     return 0
 
 
@@ -631,14 +717,37 @@ def build_parser() -> argparse.ArgumentParser:
                       help="print the draft instead of posting it")
 
     serve = sub.add_parser("serve", parents=[common],
-                           help="(GPU PC) model server for laptops")
+                           help="(GPU PC) shared AI model server for every platform")
     serve.add_argument("--host", default="0.0.0.0",
                        help="listen address (default all interfaces)")
     serve.add_argument("--port", type=int, default=8765)
-    serve.add_argument("--new-key", action="store_true",
-                       help="replace the server key (laptops need the new one)")
+    serve.add_argument("--new-key", action="store_true", help=argparse.SUPPRESS)
     serve.add_argument("--stt-slots", type=int, default=1,
-                       help="decodes run at once on the GPU (default 1)")
+                       help="speech decodes at once on the GPU (default 1)")
+    serve.add_argument("--llm-slots", type=int, default=2,
+                       help="Ollama requests at once (default 2)")
+    serve.add_argument("--per-key", type=int, default=1,
+                       help="requests one key may run at once per queue (default 1)")
+    serve.add_argument("--max-queue", type=int, default=32,
+                       help="requests waiting per queue before 429 (default 32)")
+    serve.add_argument("--chat-models", default=None, metavar="M1,M2",
+                       help="Ollama models offered on /v1/chat/completions "
+                            "(default: the summary model)")
+    serve.add_argument("--require-gpu", action="store_true",
+                       help="exit (code 3) if Whisper can't use CUDA — for a service "
+                            "manager to restart")
+    serve.add_argument("--wait-ollama", type=float, default=120.0, metavar="SECONDS",
+                       help="wait this long for Ollama at start (default 120)")
+    serve_sub = serve.add_subparsers(dest="serve_cmd")
+    keys = serve_sub.add_parser("keys", help="manage platform keys")
+    keys_sub = keys.add_subparsers(dest="keys_cmd", required=True)
+    keys_add = keys_sub.add_parser("add", help="new key for a platform (printed once)")
+    keys_add.add_argument("name")
+    keys_add.add_argument("--concurrency", type=int, default=None,
+                          help="this key's own per-queue limit")
+    keys_sub.add_parser("list", help="keys, last use and usage")
+    keys_revoke = keys_sub.add_parser("revoke", help="retire a platform's key")
+    keys_revoke.add_argument("name")
 
     test = sub.add_parser("test", help="contract round-trip vs TEST-ONLY mock")
     test.add_argument("--port", type=int, default=MOCK_PORT)

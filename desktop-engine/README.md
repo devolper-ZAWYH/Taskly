@@ -22,6 +22,9 @@ The speech work runs in one of two places:
 Audio leaves the laptop only in the second mode, and only to the model server
 you name. Taskly itself never receives audio.
 
+The same PC also serves other platforms through an OpenAI-compatible API (chat,
+transcription, translation), each with its own key. See [CONNECT.md](CONNECT.md).
+
 > This is the explicitly allowed **Python dev fallback** path against the
 > same API contract; the production engine (Rust + whisper.cpp embedded in
 > Tauri) is expected to follow later.
@@ -35,7 +38,7 @@ desktop-engine/
 ├── pyproject.toml           PEP 621 (package + test extras)
 ├── requirements.txt         pinned deps: the GPU PC and laptops that decode locally
 ├── requirements-laptop.txt  pinned deps: a laptop that uses a model server
-├── .gitignore               .venv/, models/, journal.sqlite3, model-server.key, state files
+├── .gitignore               .venv/, models/, journal.sqlite3, server-keys.json, model-server.key, state files
 ├── fixtures/                generated speech clips for replay tests
 │   ├── clip-en2.mp3         English neural TTS (edge-tts)
 │   ├── clip-ar.mp3          Arabic neural TTS (edge-tts)
@@ -44,7 +47,11 @@ desktop-engine/
 │   ├── cli.py               commands: start / stop / status / replay / summarize /
 │   │                        serve / test / mockserve
 │   ├── config.py            env (TASKLY_*) + CLI overrides; model-server settings
-│   ├── server.py            `serve`: the GPU PC's model server (HTTP, server key)
+│   ├── server.py            `serve`: the GPU PC's shared model server (HTTP, platform keys)
+│   ├── openai_api.py        its OpenAI-compatible routes (CONNECT.md)
+│   ├── openai_io.py         multipart, audio decoding, OpenAI error/response shapes
+│   ├── keys.py              per-platform API keys (hashed) + usage counters
+│   ├── scheduler.py         fair GPU queues: round-robin per key, 429 when full
 │   ├── remote.py            laptop side of the model server: RemoteStt (retries
 │   │                        each utterance for 5 min), RemoteSummarizer
 │   ├── gpu.py               Windows: adds the venv's nvidia/*/bin folders (cuBLAS, cuDNN)
@@ -78,7 +85,8 @@ desktop-engine/
 
 Runtime files (in this folder, gitignored): `journal.sqlite3` (+WAL),
 `models/` (Whisper weights cache), `engine-state.json`, `engine.stop.flag`,
-and on the GPU PC `model-server.key`, the model server's password.
+and on the GPU PC `server-keys.json` (platform keys, stored as hashes) plus the
+older `model-server.key` (imported once as the key `taskly-laptops`).
 
 ## 2. Setup
 
@@ -196,13 +204,17 @@ py -m venv .venv
   The first run downloads the Whisper model (`large-v3-turbo` by default) from
   Hugging Face into `desktop-engine\models`; after that it works offline. The
   banner shows the model, the device it loaded on, the translator and the
-  summarizer, then prints the server key and the setup lines for each laptop
-  (§6).
+  summarizer, the keys by name and the URLs to connect with (§6). It prints a key
+  only when none exists yet (it then makes one named `default`); make one per
+  platform with `serve keys add <name>` (CONNECT.md).
 
 Options: `--host` (default `0.0.0.0`, all interfaces; set it to the PC's
 Tailscale or LAN address to narrow the listener), `--port` (default `8765`),
-`--stt-slots` (decodes at once on the GPU, default 1), `--new-key`
-(replace the key), `--model` / `TASKLY_MODEL` (Whisper model),
+`--stt-slots` (speech decodes at once, default 1), `--llm-slots` (Ollama requests
+at once, default 2), `--per-key` (per key per queue, default 1), `--max-queue`
+(waiting before 429, default 32), `--chat-models` (Ollama models offered to
+platforms, default the summary model), `--require-gpu` (exit 3 without CUDA),
+`--wait-ollama` (seconds, default 120), `--model` / `TASKLY_MODEL` (Whisper model),
 `--translator` / `TASKLY_TRANSLATOR` (default `auto` on `serve`),
 `--translate-model`, `--ollama-url`, `--summary-model`, `--data-dir`.
 
@@ -230,6 +242,11 @@ and allow the matching profile.
 
 ### 2.4 Start the model server at log on (Windows)
 
+For a PC that must serve models around the clock, the service installer in §2.5
+supersedes this section. It runs the model server as a Windows service that
+starts at boot, without a sign-in. The Task Scheduler steps below still work
+for a PC that signs in and stays on.
+
 Ollama installs its own startup entry, so check that it runs too.
 
 **Task Scheduler**: Create Task → Trigger **At log on** → Action **Start a
@@ -245,7 +262,28 @@ schtasks /Create /SC ONLOGON /TN "Taskly model server" /TR "cmd /c \"cd /d \"C:\
 
 Start it now with `schtasks /Run /TN "Taskly model server"`, and remove it with
 `schtasks /Delete /TN "Taskly model server" /F`. The task runs in a console
-window with no visible key, so read the key from `desktop-engine\model-server.key`.
+window; give the laptops a key from `serve keys add <name>` (or the migrated
+`taskly-laptops` key in `desktop-engine\model-server.key`).
+
+### 2.5 24/7 service (Windows)
+
+The service installer, `scripts\install-pc-services.ps1`, sets up two Windows
+services: `ollama` and `taskly-model-server`. Both start at boot without a
+sign-in and restart on failure. Run it once from an elevated PowerShell, in
+`desktop-engine`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install-pc-services.ps1
+```
+
+It asks yes or no before each step, and nothing changes until you approve.
+When it finishes it reports whether the GPU is in use from the service.
+
+- Check the services: `Get-Service ollama, taskly-model-server`.
+- Logs: `C:\ProgramData\TasklyAI\<service>\logs\`.
+- Remove everything: `scripts\uninstall-pc-services.ps1`.
+
+Details, including the health check and the reboot test: [CONNECT.md §8](CONNECT.md).
 
 ## 3. Configuration (env or CLI)
 
@@ -387,16 +425,19 @@ Every route but health needs `Authorization: Bearer <server key>`. Other errors:
 length or body too large), `502` (Ollama refused the summary), `503` (busy or
 no summarizer), `500` (the model failed), `404` (unknown route).
 
-**The key.** Made on the first `serve` and kept in `<data dir>\model-server.key`
-(on Windows `desktop-engine\model-server.key`). It is printed with the setup
-lines. `serve --new-key` replaces it, and then every laptop needs the new key.
-Treat it like a password: anyone with it can use the PC's models. The file is
-gitignored.
+**Keys.** One per platform: `serve keys add <name>` prints it once, `serve keys
+list` shows last use and usage, `serve keys revoke <name>` retires it (the
+running server picks both up within seconds). Stored as SHA-256 hashes in
+`<data dir>\server-keys.json`; the older single `model-server.key` was imported
+as `taskly-laptops`, so existing laptops keep working. Treat keys like
+passwords. Both files are gitignored.
 
-**GPU work.** One decode runs at a time by default (`--stt-slots`), and one
-summary runs beside it. A request that waits 40 s for its slot gets `503` with
-`Retry-After: 2`, and the laptop retries. Concurrent laptops queue rather than
-exhaust VRAM.
+**GPU work.** Two fair queues (scheduler.py): "speech" (Whisper and the line
+translator, `--stt-slots`, default 1) and "llm" (Ollama, `--llm-slots`, default
+2), each round-robin across keys with `--per-key` running per key. A request
+that can't get a slot within 40 s, or finds the queue full, gets `503` +
+`Retry-After` on these routes (the laptop retries) and `429` + `Retry-After` on
+the OpenAI routes. Measured with two platforms at once: see CONNECT.md.
 
 **What the PC knows.** It gets audio or a summary prompt and the server key. It
 never gets a Taskly token, a session id or a meeting id, and it keeps no sessions
@@ -537,8 +578,8 @@ no real server, no audio devices needed).
   pipeline (replay reads a local file only).
 * **The GPU PC** holds no meeting state: no sessions, Taskly tokens or meeting
   ids. Its logs carry routes, statuses, sizes and timings, never the words.
-* **The model server key** is a password for the PC's models. Keep
-  `model-server.key` private; it is gitignored.
+* **Platform keys** are passwords for the PC's models. `server-keys.json` keeps
+  only their hashes; both it and `model-server.key` are gitignored.
 * **Model weights** download once from Hugging Face into `desktop-engine/models`;
   after that everything runs offline.
 * The mock server (`mock_server.py`, `--mock`, `test`, `mockserve`) is

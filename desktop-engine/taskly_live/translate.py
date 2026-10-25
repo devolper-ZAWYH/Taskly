@@ -34,10 +34,12 @@ Nothing here logs the words themselves: ids, languages, sizes and timings.
 from __future__ import annotations
 
 import logging
+import os
 import re
+import threading
 import time
 from pathlib import Path
-from typing import Protocol
+from typing import Callable, Protocol
 
 import requests
 
@@ -54,9 +56,11 @@ DEFAULT_TIMEOUT_S = 10.0
 COOL_OFF_S = 30.0
 # A translator stays loaded through a meeting's pauses, then frees its VRAM.
 TRANSLATOR_KEEP_ALIVE = "30m"
-# The summarizer's smallest context (summarize.OllamaSummarizer): the same
-# model at the same num_ctx stays loaded; a different one forces a reload.
-CHAT_NUM_CTX = 8_192
+# One context size for every caller of a model: the same model at another
+# num_ctx makes Ollama reload it (seconds). The summarizer's floor uses it
+# too, and Ollama's OpenAI-compatible endpoint — which ignores num_ctx and
+# uses OLLAMA_CONTEXT_LENGTH — must be set to match (the PC's service does).
+CHAT_NUM_CTX = int(os.environ.get("TASKLY_OLLAMA_NUM_CTX", "") or 8_192)
 TRANSLATOR_KINDS = ("auto", "off", "ollama", "hymt", "marian")
 # (CTranslate2 weights, sentencepiece source, target-language token). The
 # CT2 conversions don't carry the tokenizers; Helsinki-NLP's originals do.
@@ -358,6 +362,127 @@ class MarianTranslator:
         if not out:
             raise TranslationError("empty translation")
         return out
+
+
+class AutoTranslator:
+    """`--translator auto` for a server that runs for weeks: it keeps looking.
+
+    At boot Ollama may start after the model server; a one-time pick would
+    then settle on Marian (or nothing) for the whole run. This picks the best
+    translator that works now and, while that isn't the first choice (the
+    Ollama chat model), re-checks every `recheck_s` in the background,
+    warming a newly found Ollama model up *before* switching to it so no line
+    waits on a cold load. It looks like the translator it wraps (`name`,
+    `model`, `keep_alive`, `warm_up`, `release`), so the rest of the server
+    doesn't care.
+    """
+
+    def __init__(self, ollama_url: str = DEFAULT_OLLAMA_URL,
+                 ollama_model: str = DEFAULT_OLLAMA_TRANSLATE_MODEL,
+                 models_dir: Path | None = None, *, recheck_s: float = 30.0,
+                 allow_marian: bool = True,
+                 clock: Callable[[], float] = time.monotonic) -> None:
+        self.ollama_url = ollama_url
+        self.ollama_model = ollama_model
+        self.models_dir = models_dir
+        self.recheck_s = float(recheck_s)
+        self.allow_marian = allow_marian
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._current: Translator | None = None
+        self._best = False
+        self._marian: Translator | None = None
+        self._keep_alive: str | int = TRANSLATOR_KEEP_ALIVE
+        self._checking = False
+        self._next_check = 0.0
+        self._probe(warm=False)
+
+    # ---- looks like the current translator ---------------------------------
+    @property
+    def name(self) -> str:
+        cur = self._current
+        return f"auto -> {cur.name}" if cur else "auto -> none yet (re-checking)"
+
+    @property
+    def model(self) -> str | None:
+        return getattr(self._current, "model", None)
+
+    @property
+    def keep_alive(self) -> str | int:
+        return self._keep_alive
+
+    @keep_alive.setter
+    def keep_alive(self, value: str | int) -> None:
+        self._keep_alive = value
+        if hasattr(self._current, "keep_alive"):
+            self._current.keep_alive = value  # type: ignore[union-attr]
+
+    def warm_up(self) -> float:
+        cur = self._current
+        if cur is None or not hasattr(cur, "warm_up"):
+            return 0.0
+        return cur.warm_up()  # type: ignore[union-attr]
+
+    def release(self) -> None:
+        cur = self._current
+        if cur is not None and hasattr(cur, "release"):
+            cur.release()  # type: ignore[union-attr]
+
+    def translate(self, text: str, src: str, dst: str) -> str:
+        self._maybe_recheck()
+        cur = self._current
+        if cur is None:
+            raise TranslationError("no translator available yet")
+        return cur.translate(text, src, dst)
+
+    # ---- the search ----------------------------------------------------------
+    def _maybe_recheck(self) -> None:
+        with self._lock:
+            if self._best or self._checking or self._clock() < self._next_check:
+                return
+            self._checking = True
+        threading.Thread(target=self._probe_in_background, name="translator-recheck",
+                         daemon=True).start()
+
+    def _probe_in_background(self) -> None:
+        try:
+            self._probe(warm=True)
+        finally:
+            with self._lock:
+                self._checking = False
+
+    def _probe(self, *, warm: bool) -> None:
+        """Take the first that works: Ollama chat model, Hy-MT2, Marian, none."""
+        found: Translator | None = None
+        best = False
+        for candidate in (OllamaTranslator(self.ollama_url, self.ollama_model,
+                                           keep_alive=self._keep_alive),
+                          HyMtTranslator(self.ollama_url, keep_alive=self._keep_alive)):
+            if candidate.available():
+                if warm:
+                    try:
+                        candidate.warm_up()
+                    except TranslationError:
+                        continue  # listed but not answering yet: next round
+                found, best = candidate, candidate.model == self.ollama_model
+                break
+        if found is None and self.allow_marian:
+            if self._marian is None:
+                try:
+                    self._marian = MarianTranslator(self.models_dir)
+                except Exception as exc:  # noqa: BLE001 - offline, no sentencepiece...
+                    log.warning("Marian unavailable (%s)", str(exc)[:160] or type(exc).__name__)
+                    self.allow_marian = False  # don't retry a load that can't work
+            found = self._marian
+        with self._lock:
+            changed = (getattr(found, "name", None) != getattr(self._current, "name", None))
+            self._current, self._best = found, best
+            if best:
+                self._marian = None  # free its VRAM: the first choice is here
+            self._next_check = self._clock() + self.recheck_s
+        if changed:
+            log.info("translator: %s%s", found.name if found else "none",
+                     "" if best else f" (re-checking every {self.recheck_s:.0f}s)")
 
 
 def build_translator(kind: str | None, *, ollama_url: str = DEFAULT_OLLAMA_URL,

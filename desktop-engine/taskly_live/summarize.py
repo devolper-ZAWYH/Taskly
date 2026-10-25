@@ -288,7 +288,9 @@ class OllamaSummarizer:
     def _context_for(system: str, user: str) -> int:
         """A context window that fits the prompt plus the answer (~3 chars/token)."""
         need = (len(system) + len(user)) // 3 + 2_048
-        return max(8_192, min(32_768, -(-need // 1_024) * 1_024))
+        from .translate import CHAT_NUM_CTX  # the floor every caller shares
+
+        return max(CHAT_NUM_CTX, min(32_768, -(-need // 1_024) * 1_024))
 
     def complete(self, system: str, user: str) -> str:
         body = {

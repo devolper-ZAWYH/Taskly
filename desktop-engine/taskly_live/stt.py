@@ -222,12 +222,27 @@ class SttPipeline:
             translate_s=(translate_s or 0.0) + pivot_s if (translate_s or pivot_s) else None,
         )
 
+    def recognize(self, pcm: np.ndarray, *,
+                  language: str | None = None) -> tuple[str, str | None] | None:
+        """Just the words of one slice (`(text, lang)`), in any language
+        Whisper detects, or None for silence/stock hallucinations.
+
+        For the OpenAI-style audio routes (server.py): no translation, and a
+        caller-chosen language instead of the pipeline's own.
+        """
+        text, lang = self._decode(pcm, task="transcribe", language=language or self._language)
+        text = text.strip()
+        if self._is_noise(text, pcm):
+            return None
+        return text, lang
+
     # ---- helpers ------------------------------------------------------------
-    def _decode(self, pcm: np.ndarray, *, task: str) -> tuple[str, str | None]:
+    def _decode(self, pcm: np.ndarray, *, task: str,
+                language: str | None = None) -> tuple[str, str | None]:
         segments, info = self._model.transcribe(
             pcm,
             task=task,
-            language=self._language,
+            language=language or self._language,
             beam_size=1,
             condition_on_previous_text=False,
             vad_filter=False,  # our Segmenter already did the slicing

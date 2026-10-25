@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import http.client
 import threading
+import time
 from types import SimpleNamespace
 
 import numpy as np
@@ -148,13 +149,16 @@ def test_health_with_a_wrong_key_is_401_and_names_no_models(running):
 def test_health_with_the_key_describes_the_models(running):
     reply = requests.get(f"{running.url}/v1/health", headers=auth(), timeout=5)
     assert reply.status_code == 200
-    assert reply.json() == {
+    body = reply.json()
+    assert {k: body[k] for k in ("ok", "stt", "device", "translator", "summarizer")} == {
         "ok": True,
         "stt": "fake-whisper",
         "device": "cpu",
         "translator": "ollama:fake",
         "summarizer": "fake-ollama",
     }
+    # Queue state: counts per key name only.
+    assert set(body["queues"]) == {"speech", "llm"}
 
 
 def test_unknown_get_route_is_404(running):
@@ -405,3 +409,49 @@ def test_the_summary_model_itself_is_not_unloaded(serve):
                           headers=auth(), timeout=5)
     assert reply.status_code == 200
     assert stt.translator.released == 0
+
+
+# ---- facing the internet: idle clients and connection floods ---------------------------
+
+
+def test_no_python_version_in_the_server_header(running):
+    reply = requests.get(f"{running.url}/v1/health", timeout=5)
+    assert reply.headers["Server"].startswith("TasklyModelServer/")
+    assert "Python" not in reply.headers["Server"]
+
+
+def test_a_client_that_goes_quiet_is_cut_off(serve, monkeypatch):
+    import socket
+
+    from taskly_live import server as server_mod
+
+    monkeypatch.setattr(server_mod._Handler, "timeout", 0.5)
+    s = serve()
+    with socket.create_connection(("127.0.0.1", s.port), timeout=5) as sock:
+        sock.sendall(b"POST /v1/transcribe HTTP/1.1\r\nHost: x\r\n")  # never finishes
+        sock.settimeout(5)
+        t0 = time.monotonic()
+        data = sock.recv(1024)  # the server closes on us
+        assert time.monotonic() - t0 < 4
+        assert data == b"" or b"408" in data or b"400" in data
+
+
+def test_connections_over_the_cap_are_refused_at_once(serve, monkeypatch):
+    import socket
+
+    from taskly_live import server as server_mod
+
+    monkeypatch.setattr(server_mod._Server, "max_connections", 2)
+    s = serve()
+    held = [socket.create_connection(("127.0.0.1", s.port), timeout=5) for _ in range(2)]
+    try:
+        time.sleep(0.2)  # both accepted and waiting for a request line
+        with socket.create_connection(("127.0.0.1", s.port), timeout=5) as extra:
+            extra.settimeout(5)
+            assert extra.recv(1024).startswith(b"HTTP/1.1 503")
+    finally:
+        for sock in held:
+            sock.close()
+    time.sleep(0.2)
+    # Slots come back once those connections end.
+    assert requests.get(f"{s.url}/v1/health", timeout=5).status_code == 200

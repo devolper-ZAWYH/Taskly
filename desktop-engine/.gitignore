@@ -9,6 +9,8 @@ engine-state.json
 engine.stop.flag
 # The model server's key (`serve`): a password, never commit
 model-server.key
+server-keys.json
+server-keys.json.tmp
 
 # Model caches (Whisper via HuggingFace hub) — never commit
 models/
