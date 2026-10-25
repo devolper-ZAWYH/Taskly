@@ -15,16 +15,28 @@ folder you choose.
 
 ## 0. Check your hosting
 
-In cPanel, look for **Software → Setup Node.js App**.
+cPanel runs Node.js apps with one of two tools, under **Software**:
+
+- **Setup Node.js App** on CloudLinux servers.
+- **Application Manager** on other servers (AlmaLinux, Rocky). The zawyh server
+  is one of these. If it's missing, someone with WHM turns it on: **EasyApache 4
+  → Customize**, switch on `mod_passenger` (Apache Modules) and `ea-nodejs22` or
+  newer (Additional Packages), **Provision**, then tick **Application Manager**
+  in **Feature Manager**. Or as root:
+  `dnf install -y ea-apache24-mod-passenger ea-nodejs22`.
+
+The steps below are for Setup Node.js App, with notes where Application Manager
+differs.
 
 - It must offer **Node.js 22.13 or newer** (24 is best). Taskly's database uses
-  the SQLite built into Node.
+  the SQLite built into Node. With Application Manager, check with
+  `/opt/cpanel/ea-nodejs22/bin/node -v` (or the newest `ea-nodejs*` folder).
 - You'll also want **Advanced → Terminal** (or SSH) for the database commands.
   Without it, ask your host to run them, or use the **Run JS script** box on the
   Node.js app page where your host offers it.
 - Plan for about **500 MB of memory** for the app. Small shared plans may be too tight.
 
-No Setup Node.js App, or only older Node versions: cPanel can't run Taskly.
+Neither tool, or only older Node versions: cPanel can't run Taskly.
 Stay on Cloudflare.
 
 ## 1. Create the subdomain
@@ -44,7 +56,7 @@ yarn install
 yarn build:cpanel
 ```
 
-This makes `cpanel-build/taskly-cpanel.tar.gz` (about 13 MB): the server,
+This makes `cpanel-build/taskly-cpanel.tar.gz` (about 6 MB): the server,
 everything it needs (`node_modules` included), the migrations and the database
 tool. It never contains your database or local secrets.
 
@@ -82,6 +94,12 @@ Optional: `TASKLY_DB_PATH` (default `data/taskly.db` inside the app folder).
 
 **Don't press "Run NPM Install".** The package already has its `node_modules`.
 
+**With Application Manager instead:** **Register Application** with name
+`taskly`, deployment domain `taskly.zawyh.com`, base URL `/`, application path
+`taskly-app`, environment **Production**, and the same environment variables.
+There's no startup file field: it always starts `app.js`, which the package
+includes (it starts `server.js`). Don't press **Ensure dependencies**.
+
 ## 4. Upload
 
 1. **File Manager →** open `taskly-app`. Delete the sample files cPanel put
@@ -104,7 +122,9 @@ npx wrangler d1 export DB --remote --output taskly.sql
 Upload `taskly.sql` into `taskly-app` (File Manager). Then in cPanel
 **Terminal**, first run the "Enter to the virtual environment" command shown at
 the top of the Node.js app page (it looks like
-`source /home/USER/nodevenv/taskly-app/24/bin/activate && cd /home/USER/taskly-app`), then:
+`source /home/USER/nodevenv/taskly-app/24/bin/activate && cd /home/USER/taskly-app`;
+with Application Manager, run
+`export PATH=/opt/cpanel/ea-nodejs22/bin:$PATH && cd /home/USER/taskly-app` instead), then:
 
 ```bash
 node scripts/cpanel-db.mjs import taskly.sql
@@ -122,7 +142,8 @@ upload it, and run `node scripts/cpanel-db.mjs run operator.sql` (then delete it
 
 ## 6. Start it
 
-On the Node.js app page press **Restart**, then open
+On the Node.js app page press **Restart** (Application Manager: in Terminal,
+`mkdir -p tmp && touch tmp/restart.txt` in `taskly-app`), then open
 `https://taskly.zawyh.com` and sign in.
 
 ## 7. Scheduled work and backups (cPanel → Cron Jobs)
@@ -139,7 +160,8 @@ The first runs Google sync and translation retries, the second due date
 reminders. The backup keeps the newest 14 copies in `/home/USER/taskly-app/backups/`
 (download one now and then, or include it in your cPanel backups). If the
 `node` path differs, run the "Enter to the virtual environment" command, then
-`which node`, and use that path.
+`which node`, and use that path. With Application Manager it's
+`/opt/cpanel/ea-nodejs22/bin/node`.
 
 ## 8. Settings after the move
 
@@ -170,13 +192,15 @@ for a while as an extra backup.
 1. On your computer: `git pull`, `yarn install`, `yarn build:cpanel`.
 2. Upload and extract the new `.tar.gz` into `taskly-app`, replacing files
    (the `data` folder isn't in the package, so the database stays).
-3. In Terminal (after "Enter to the virtual environment"): `node scripts/cpanel-db.mjs migrate`.
-4. **Restart** the app.
+3. In Terminal (after "Enter to the virtual environment", or the `export PATH`
+   line with Application Manager): `node scripts/cpanel-db.mjs migrate`.
+4. **Restart** the app (Application Manager: `touch tmp/restart.txt`).
 
 ## If something goes wrong
 
 - **Blank page or "Incomplete response":** check the app's log, `stderr.log`
-  in `taskly-app` (or set a log file on the Node.js app page). A missing
+  in `taskly-app` (or set a log file on the Node.js app page; with Application
+  Manager, Apache's error log, `/etc/apache2/logs/error_log`, as root). A missing
   `TASKLY_RUNTIME=node` shows up as a Cloudflare error there.
 - **Signed out on every page:** the site isn't on https, or `APP_ORIGIN` doesn't match the address.
 - **No reminders:** check the cron jobs' emails. A 401 means the `CRON_SECRET` differs.
